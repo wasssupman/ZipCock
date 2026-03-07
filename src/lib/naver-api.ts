@@ -1,40 +1,93 @@
-import { chromium, type Browser, type BrowserContext } from "playwright";
+import { chromium } from "playwright";
 import type { RegionItem, ComplexItem, ArticleItem } from "./types";
 
-let browser: Browser | null = null;
-let context: BrowserContext | null = null;
+// --- Cookie-based fetch infrastructure ---
 
-async function getBrowserContext(): Promise<BrowserContext> {
-  if (!browser || !browser.isConnected()) {
-    browser = await chromium.launch({
-      headless: false,
-      args: ["--disable-blink-features=AutomationControlled"],
-    });
-    context = await browser.newContext({
-      userAgent:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    });
-    await context.addInitScript(() => {
-      Object.defineProperty(navigator, "webdriver", { get: () => false });
-    });
-  }
-  return context!;
+const USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+const SITE_URL = "https://fin.land.naver.com/regions";
+const COOKIE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+let cachedCookies: string | null = null;
+let cookieExpiry: number = 0;
+
+async function refreshCookies(): Promise<void> {
+  const browser = await chromium.launch({
+    headless: false,
+    args: ["--disable-blink-features=AutomationControlled"],
+  });
+  const context = await browser.newContext({ userAgent: USER_AGENT });
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => false });
+  });
+
+  const page = await context.newPage();
+  await page.goto(SITE_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
+  await page.waitForTimeout(5000);
+
+  const cookies = await context.cookies();
+  cachedCookies = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+  cookieExpiry = Date.now() + COOKIE_TTL_MS;
+
+  await page.close();
+  await browser.close();
 }
 
-export async function closeBrowser() {
-  if (browser) {
-    await browser.close();
-    browser = null;
-    context = null;
+async function ensureCookies(): Promise<string> {
+  if (!cachedCookies || Date.now() >= cookieExpiry) {
+    await refreshCookies();
   }
+  return cachedCookies!;
+}
+
+async function naverFetch(url: string): Promise<unknown> {
+  const cookieHeader = await ensureCookies();
+  const headers: Record<string, string> = {
+    Cookie: cookieHeader,
+    "User-Agent": USER_AGENT,
+    Referer: SITE_URL,
+    Accept: "application/json, text/plain, */*",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+  };
+
+  let response = await fetch(url, { headers });
+
+  if (response.status !== 200) {
+    // Refresh cookies once and retry
+    await refreshCookies();
+    const retryHeaders = {
+      ...headers,
+      Cookie: cachedCookies!,
+    };
+    response = await fetch(url, { headers: retryHeaders });
+  }
+
+  return response.json();
+}
+
+// --- Public API ---
+
+export async function closeBrowser(): Promise<void> {
+  // No-op: browser is closed immediately after cookie extraction.
+  // Kept for backward compatibility with crawl.ts.
 }
 
 export async function fetchRegions(
   si?: string,
   gun?: string
 ): Promise<RegionItem[]> {
-  const ctx = await getBrowserContext();
-  const page = await ctx.newPage();
+  // fetchRegions still uses Playwright to scrape HTML links.
+  // It is called infrequently from the web UI.
+  const browser = await chromium.launch({
+    headless: false,
+    args: ["--disable-blink-features=AutomationControlled"],
+  });
+  const context = await browser.newContext({ userAgent: USER_AGENT });
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => false });
+  });
+
+  const page = await context.newPage();
   try {
     let url = "https://fin.land.naver.com/regions";
     if (si && gun) {
@@ -88,6 +141,7 @@ export async function fetchRegions(
       );
   } finally {
     await page.close();
+    await browser.close();
   }
 }
 
@@ -99,103 +153,76 @@ export async function fetchComplexesByRegion(
   hasNextPage: boolean;
   totalCount: number;
 }> {
-  const ctx = await getBrowserContext();
-  const page = await ctx.newPage();
-  try {
-    const apiPromise = page
-      .waitForResponse(
-        (resp) => resp.url().includes("front-api/v1/complex/region"),
-        { timeout: 15000 }
-      )
-      .catch(() => null);
+  const url = `https://fin.land.naver.com/front-api/v1/complex/region?eupLegalDivisionNumber=${eupCode}&size=20&sortType=HOUSEHOLD&page=${pageNum}`;
+  const data = (await naverFetch(url)) as {
+    isSuccess: boolean;
+    result: {
+      list: Array<Record<string, unknown>>;
+      hasNextPage: boolean;
+      totalCount: number;
+    };
+  };
 
-    await page.goto(
-      `https://fin.land.naver.com/regions?si=${eupCode.substring(0, 2)}00000000&gun=${eupCode.substring(0, 5)}00000&eup=${eupCode}`,
-      { waitUntil: "domcontentloaded", timeout: 30000 }
-    );
-
-    const apiResponse = await apiPromise;
-    if (apiResponse) {
-      const data = await apiResponse.json();
-      if (data.isSuccess) {
+  if (data.isSuccess) {
+    return {
+      list: data.result.list.map((item) => {
+        const complexInfo = item.complexInfo as Record<string, unknown>;
+        const articleCountInfo = item.articleCountInfo as Record<
+          string,
+          unknown
+        >;
         return {
-          list: data.result.list.map((item: Record<string, unknown>) => {
-            const complexInfo = item.complexInfo as Record<string, unknown>;
-            const articleCountInfo = item.articleCountInfo as Record<
-              string,
-              unknown
-            >;
-            return {
-              complexNumber: complexInfo.complexNumber as number,
-              name: complexInfo.name as string,
-              type: complexInfo.type as string,
-              totalHouseholdNumber:
-                complexInfo.totalHouseholdNumber as number,
-              dealCount: articleCountInfo.dealCount as number,
-              leaseDepositCount:
-                articleCountInfo.leaseDepositCount as number,
-              leaseMonthlyCount:
-                articleCountInfo.leaseMonthlyCount as number,
-            };
-          }),
-          hasNextPage: data.result.hasNextPage,
-          totalCount: data.result.totalCount,
+          complexNumber: complexInfo.complexNumber as number,
+          name: complexInfo.name as string,
+          type: complexInfo.type as string,
+          totalHouseholdNumber:
+            complexInfo.totalHouseholdNumber as number,
+          dealCount: articleCountInfo.dealCount as number,
+          leaseDepositCount:
+            articleCountInfo.leaseDepositCount as number,
+          leaseMonthlyCount:
+            articleCountInfo.leaseMonthlyCount as number,
         };
-      }
-    }
-    return { list: [], hasNextPage: false, totalCount: 0 };
-  } finally {
-    await page.close();
+      }),
+      hasNextPage: data.result.hasNextPage,
+      totalCount: data.result.totalCount,
+    };
   }
+  return { list: [], hasNextPage: false, totalCount: 0 };
 }
 
 export async function fetchArticlesByComplex(
   complexNumber: number,
   tradeType: string = "A1"
 ): Promise<ArticleItem[]> {
-  const ctx = await getBrowserContext();
-  const page = await ctx.newPage();
-  try {
-    const apiPromise = page
-      .waitForResponse(
-        (resp) => resp.url().includes("front-api/v1/complex/article/list"),
-        { timeout: 15000 }
-      )
-      .catch(() => null);
+  const url = `https://fin.land.naver.com/front-api/v1/complex/article/list?complexNumber=${complexNumber}&tradeType=${tradeType}&page=0&size=20&orderType=DATE_DESC`;
+  const data = (await naverFetch(url)) as {
+    isSuccess: boolean;
+    result?: {
+      list?: Array<Record<string, unknown>>;
+    };
+  };
 
-    await page.goto(
-      `https://fin.land.naver.com/complexes/${complexNumber}?tab=article&articleTradeTypes=${tradeType}`,
-      { waitUntil: "domcontentloaded", timeout: 30000 }
+  if (data.isSuccess && data.result?.list) {
+    return data.result.list.map(
+      (item) => ({
+        articleNumber: String(
+          item.articleNumber || item.atclNo || ""
+        ),
+        articleName: String(
+          item.articleName || item.complexName || ""
+        ),
+        tradeType,
+        price: (item.dealPrice as number) ||
+          (item.warrantyPrice as number) ||
+          0,
+        rentPrice: (item.monthlyPrice as number) || null,
+        area: (item.exclusiveArea as number) || null,
+        floor: (item.floor as string) || null,
+        direction: (item.direction as string) || null,
+        description: (item.description as string) || null,
+      })
     );
-    await page.waitForTimeout(5000);
-
-    const apiResponse = await apiPromise;
-    if (apiResponse) {
-      const data = await apiResponse.json();
-      if (data.isSuccess && data.result?.list) {
-        return data.result.list.map(
-          (item: Record<string, unknown>) => ({
-            articleNumber: String(
-              item.articleNumber || item.atclNo || ""
-            ),
-            articleName: String(
-              item.articleName || item.complexName || ""
-            ),
-            tradeType,
-            price: (item.dealPrice as number) ||
-              (item.warrantyPrice as number) ||
-              0,
-            rentPrice: (item.monthlyPrice as number) || null,
-            area: (item.exclusiveArea as number) || null,
-            floor: (item.floor as string) || null,
-            direction: (item.direction as string) || null,
-            description: (item.description as string) || null,
-          })
-        );
-      }
-    }
-    return [];
-  } finally {
-    await page.close();
   }
+  return [];
 }
