@@ -5,7 +5,26 @@ import {
   closeBrowser,
 } from "@/lib/naver-api";
 import { TRADE_TYPES } from "@/lib/types";
-import type { TradeTypeCode } from "@/lib/types";
+import type { ComplexItem, TradeTypeCode } from "@/lib/types";
+
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Map trade type codes to the ComplexItem count fields */
+function getArticleCount(
+  complex: ComplexItem,
+  tradeType: TradeTypeCode
+): number {
+  switch (tradeType) {
+    case "A1":
+      return complex.dealCount;
+    case "B1":
+      return complex.leaseDepositCount;
+    case "B2":
+      return complex.leaseMonthlyCount;
+    default:
+      return 0;
+  }
+}
 
 export async function crawlRegion(regionId: number, cortarNo: string) {
   const log = await prisma.crawlLog.create({
@@ -18,30 +37,51 @@ export async function crawlRegion(regionId: number, cortarNo: string) {
 
   try {
     // Step 1: Get all complexes in this region (eup code)
-    const tradeTypes = Object.keys(TRADE_TYPES) as TradeTypeCode[];
+    // Exclude B3 (단기) — rarely used, not worth the API call
+    const tradeTypes = (
+      Object.keys(TRADE_TYPES) as TradeTypeCode[]
+    ).filter((t) => t !== "B3");
     let pageNum = 0;
     let hasNextPage = true;
-    const allComplexNumbers: number[] = [];
+    const allComplexes: ComplexItem[] = [];
 
     while (hasNextPage) {
       const result = await fetchComplexesByRegion(cortarNo, pageNum);
       for (const complex of result.list) {
-        allComplexNumbers.push(complex.complexNumber);
+        allComplexes.push(complex);
       }
       hasNextPage = result.hasNextPage;
       pageNum++;
-      await new Promise((r) => setTimeout(r, 2000));
+      await delay(1500);
     }
 
+    // Filter out complexes with 0 total articles
+    const activeComplexes = allComplexes.filter(
+      (c) => c.dealCount + c.leaseDepositCount + c.leaseMonthlyCount > 0
+    );
+    const skippedComplexes = allComplexes.length - activeComplexes.length;
+
+    // Calculate how many API calls we save
+    const naiveApiCalls = allComplexes.length * 4; // 4 trade types per complex
+    let actualApiCalls = 0;
+    let skippedTradeTypeCalls = 0;
+
     console.log(
-      `[Crawl] Found ${allComplexNumbers.length} complexes in region ${cortarNo}`
+      `[Crawl] Found ${allComplexes.length} complexes in region ${cortarNo}, ` +
+        `${skippedComplexes} skipped (0 articles), ${activeComplexes.length} to crawl`
     );
 
-    // Step 2: For each complex, fetch articles by trade type
-    for (const complexNumber of allComplexNumbers) {
+    // Step 2: For each complex, fetch articles by trade type (skip if count is 0)
+    for (const complex of activeComplexes) {
       for (const tradeType of tradeTypes) {
+        if (getArticleCount(complex, tradeType) === 0) {
+          skippedTradeTypeCalls++;
+          continue;
+        }
+
+        actualApiCalls++;
         const articles = await fetchArticlesByComplex(
-          complexNumber,
+          complex.complexNumber,
           tradeType
         );
 
@@ -70,16 +110,21 @@ export async function crawlRegion(regionId: number, cortarNo: string) {
                 floor: article.floor || null,
                 buildingName: article.articleName || null,
                 description: article.description || null,
-                naverUrl: `https://fin.land.naver.com/complexes/${complexNumber}?tab=article`,
+                naverUrl: `https://fin.land.naver.com/complexes/${complex.complexNumber}?tab=article`,
               },
             });
             newListings++;
           }
         }
 
-        await new Promise((r) => setTimeout(r, 2000));
+        await delay(1500);
       }
     }
+
+    console.log(
+      `[Crawl] API calls: ${actualApiCalls} made, ${skippedTradeTypeCalls + skippedComplexes * tradeTypes.length} skipped ` +
+        `(would have been ${naiveApiCalls} without optimization)`
+    );
 
     await prisma.crawlLog.update({
       where: { id: log.id },
@@ -114,22 +159,18 @@ export async function crawlAllActiveRegions() {
   console.log(`[Crawl] Starting crawl for ${regions.length} active regions`);
 
   const results = [];
-  try {
-    for (const region of regions) {
-      try {
-        console.log(`[Crawl] Crawling ${region.name} (${region.cortarNo})`);
-        const result = await crawlRegion(region.id, region.cortarNo);
-        console.log(
-          `[Crawl] ${region.name}: ${result.newListings} new, ${result.updatedListings} updated`
-        );
-        results.push({ region: region.name, ...result });
-      } catch (error) {
-        console.error(`[Crawl] Error crawling ${region.name}:`, error);
-        results.push({ region: region.name, error: String(error) });
-      }
+  for (const region of regions) {
+    try {
+      console.log(`[Crawl] Crawling ${region.name} (${region.cortarNo})`);
+      const result = await crawlRegion(region.id, region.cortarNo);
+      console.log(
+        `[Crawl] ${region.name}: ${result.newListings} new, ${result.updatedListings} updated`
+      );
+      results.push({ region: region.name, ...result });
+    } catch (error) {
+      console.error(`[Crawl] Error crawling ${region.name}:`, error);
+      results.push({ region: region.name, error: String(error) });
     }
-  } finally {
-    await closeBrowser();
   }
 
   return results;
