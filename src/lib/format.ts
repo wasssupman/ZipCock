@@ -25,12 +25,19 @@ export function formatDate(dateStr: string): string {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/** Cortar type code to Korean label */
+/** Region type code to Korean label */
 export function cortarTypeLabel(type: string): string {
   switch (type) {
-    case "sido": return "시/도";
-    case "sigungu": return "시/군/구";
-    case "dong": return "읍/면/동";
-    default: return type;
+    case "sido":
+    case "si":
+      return "시/도";
+    case "sigungu":
+    case "gun":
+      return "시/군/구";
+    case "dong":
+    case "eup":
+      return "읍/면/동";
+    default:
+      return type;
   }
 }

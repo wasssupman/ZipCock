@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import { fetchArticles } from "@/lib/naver-api";
-import { PROPERTY_TYPES, TRADE_TYPES } from "@/lib/types";
-import type { PropertyTypeCode, TradeTypeCode } from "@/lib/types";
+import {
+  fetchComplexesByRegion,
+  fetchArticlesByComplex,
+  closeBrowser,
+} from "@/lib/naver-api";
+import { TRADE_TYPES } from "@/lib/types";
+import type { TradeTypeCode } from "@/lib/types";
 
 export async function crawlRegion(regionId: number, cortarNo: string) {
   const log = await prisma.crawlLog.create({
@@ -13,59 +17,67 @@ export async function crawlRegion(regionId: number, cortarNo: string) {
   let updatedListings = 0;
 
   try {
-    const propertyTypes = Object.keys(PROPERTY_TYPES) as PropertyTypeCode[];
+    // Step 1: Get all complexes in this region (eup code)
     const tradeTypes = Object.keys(TRADE_TYPES) as TradeTypeCode[];
+    let pageNum = 0;
+    let hasNextPage = true;
+    const allComplexNumbers: number[] = [];
 
-    for (const propertyType of propertyTypes) {
+    while (hasNextPage) {
+      const result = await fetchComplexesByRegion(cortarNo, pageNum);
+      for (const complex of result.list) {
+        allComplexNumbers.push(complex.complexNumber);
+      }
+      hasNextPage = result.hasNextPage;
+      pageNum++;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    console.log(
+      `[Crawl] Found ${allComplexNumbers.length} complexes in region ${cortarNo}`
+    );
+
+    // Step 2: For each complex, fetch articles by trade type
+    for (const complexNumber of allComplexNumbers) {
       for (const tradeType of tradeTypes) {
-        let page = 1;
-        let hasMore = true;
+        const articles = await fetchArticlesByComplex(
+          complexNumber,
+          tradeType
+        );
 
-        while (hasMore) {
-          const data = await fetchArticles(
-            cortarNo,
-            tradeType,
-            propertyType,
-            page
-          );
-          if (!data.articleList || data.articleList.length === 0) break;
+        for (const article of articles) {
+          totalFound++;
+          const existing = await prisma.listing.findUnique({
+            where: { naverArticleId: article.articleNumber },
+          });
 
-          for (const article of data.articleList) {
-            totalFound++;
-            const existing = await prisma.listing.findUnique({
-              where: { naverArticleId: article.atclNo },
+          if (existing) {
+            await prisma.listing.update({
+              where: { id: existing.id },
+              data: { lastSeenAt: new Date(), isActive: true },
             });
-
-            if (existing) {
-              await prisma.listing.update({
-                where: { id: existing.id },
-                data: { lastSeenAt: new Date(), isActive: true },
-              });
-              updatedListings++;
-            } else {
-              await prisma.listing.create({
-                data: {
-                  naverArticleId: article.atclNo,
-                  regionId,
-                  propertyType,
-                  tradeType,
-                  price: article.prc,
-                  rentPrice: article.rentPrc || null,
-                  area: article.spc2 || null,
-                  floor: article.flrInfo || null,
-                  buildingName: article.atclNm || null,
-                  description: article.atclFetrDesc || null,
-                  naverUrl: `https://new.land.naver.com/articles/${article.atclNo}`,
-                },
-              });
-              newListings++;
-            }
+            updatedListings++;
+          } else {
+            await prisma.listing.create({
+              data: {
+                naverArticleId: article.articleNumber,
+                regionId,
+                propertyType: "A01",
+                tradeType,
+                price: article.price,
+                rentPrice: article.rentPrice || null,
+                area: article.area || null,
+                floor: article.floor || null,
+                buildingName: article.articleName || null,
+                description: article.description || null,
+                naverUrl: `https://fin.land.naver.com/complexes/${complexNumber}?tab=article`,
+              },
+            });
+            newListings++;
           }
-
-          hasMore = data.isMoreData;
-          page++;
-          await new Promise((r) => setTimeout(r, 1000));
         }
+
+        await new Promise((r) => setTimeout(r, 2000));
       }
     }
 
@@ -102,18 +114,22 @@ export async function crawlAllActiveRegions() {
   console.log(`[Crawl] Starting crawl for ${regions.length} active regions`);
 
   const results = [];
-  for (const region of regions) {
-    try {
-      console.log(`[Crawl] Crawling ${region.name} (${region.cortarNo})`);
-      const result = await crawlRegion(region.id, region.cortarNo);
-      console.log(
-        `[Crawl] ${region.name}: ${result.newListings} new, ${result.updatedListings} updated`
-      );
-      results.push({ region: region.name, ...result });
-    } catch (error) {
-      console.error(`[Crawl] Error crawling ${region.name}:`, error);
-      results.push({ region: region.name, error: String(error) });
+  try {
+    for (const region of regions) {
+      try {
+        console.log(`[Crawl] Crawling ${region.name} (${region.cortarNo})`);
+        const result = await crawlRegion(region.id, region.cortarNo);
+        console.log(
+          `[Crawl] ${region.name}: ${result.newListings} new, ${result.updatedListings} updated`
+        );
+        results.push({ region: region.name, ...result });
+      } catch (error) {
+        console.error(`[Crawl] Error crawling ${region.name}:`, error);
+        results.push({ region: region.name, error: String(error) });
+      }
     }
+  } finally {
+    await closeBrowser();
   }
 
   return results;

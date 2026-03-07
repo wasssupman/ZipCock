@@ -3,10 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { cortarTypeLabel } from "@/lib/format";
 
-interface NaverRegion {
-  cortarNo: string;
-  cortarName: string;
-  cortarType: string;
+interface RegionItem {
+  name: string;
+  code: string;
+  type: "si" | "gun" | "eup";
 }
 
 interface ActiveRegion {
@@ -18,13 +18,13 @@ interface ActiveRegion {
 }
 
 export default function RegionsPage() {
-  const [sidoList, setSidoList] = useState<NaverRegion[]>([]);
-  const [sigunguList, setSigunguList] = useState<NaverRegion[]>([]);
-  const [dongList, setDongList] = useState<NaverRegion[]>([]);
+  const [sidoList, setSidoList] = useState<RegionItem[]>([]);
+  const [sigunguList, setSigunguList] = useState<RegionItem[]>([]);
+  const [dongList, setDongList] = useState<RegionItem[]>([]);
 
-  const [selectedSido, setSelectedSido] = useState<NaverRegion | null>(null);
-  const [selectedSigungu, setSelectedSigungu] = useState<NaverRegion | null>(null);
-  const [selectedDong, setSelectedDong] = useState<NaverRegion | null>(null);
+  const [selectedSido, setSelectedSido] = useState<RegionItem | null>(null);
+  const [selectedSigungu, setSelectedSigungu] = useState<RegionItem | null>(null);
+  const [selectedDong, setSelectedDong] = useState<RegionItem | null>(null);
 
   const [activeRegions, setActiveRegions] = useState<ActiveRegion[]>([]);
   const [adding, setAdding] = useState(false);
@@ -38,48 +38,48 @@ export default function RegionsPage() {
 
   // Load 시/도 on mount
   useEffect(() => {
-    fetch("/api/regions/naver?cortarNo=0000000000")
+    fetch("/api/regions/naver")
       .then((r) => r.json())
-      .then((d) => setSidoList(d.cortarList || []))
+      .then((d) => setSidoList(d.regions || []))
       .catch(() => setSidoList([]));
     fetchActiveRegions();
   }, [fetchActiveRegions]);
 
-  function handleSidoChange(cortarNo: string) {
-    const region = sidoList.find((r) => r.cortarNo === cortarNo) || null;
+  function handleSidoChange(code: string) {
+    const region = sidoList.find((r) => r.code === code) || null;
     setSelectedSido(region);
     setSelectedSigungu(null);
     setSelectedDong(null);
     setSigunguList([]);
     setDongList([]);
     if (region) {
-      fetch(`/api/regions/naver?cortarNo=${cortarNo}`)
+      fetch(`/api/regions/naver?si=${code}`)
         .then((r) => r.json())
-        .then((d) => setSigunguList(d.cortarList || []))
+        .then((d) => setSigunguList(d.regions || []))
         .catch(() => setSigunguList([]));
     }
   }
 
-  function handleSigunguChange(cortarNo: string) {
-    const region = sigunguList.find((r) => r.cortarNo === cortarNo) || null;
+  function handleSigunguChange(code: string) {
+    const region = sigunguList.find((r) => r.code === code) || null;
     setSelectedSigungu(region);
     setSelectedDong(null);
     setDongList([]);
-    if (region) {
-      fetch(`/api/regions/naver?cortarNo=${cortarNo}`)
+    if (region && selectedSido) {
+      fetch(`/api/regions/naver?si=${selectedSido.code}&gun=${code}`)
         .then((r) => r.json())
-        .then((d) => setDongList(d.cortarList || []))
+        .then((d) => setDongList(d.regions || []))
         .catch(() => setDongList([]));
     }
   }
 
-  function handleDongChange(cortarNo: string) {
-    const region = dongList.find((r) => r.cortarNo === cortarNo) || null;
+  function handleDongChange(code: string) {
+    const region = dongList.find((r) => r.code === code) || null;
     setSelectedDong(region);
   }
 
   // The most specific selection is the one to add
-  function getSelectedRegion(): NaverRegion | null {
+  function getSelectedRegion(): RegionItem | null {
     return selectedDong || selectedSigungu || selectedSido;
   }
 
@@ -92,9 +92,9 @@ export default function RegionsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: region.cortarName,
-          cortarNo: region.cortarNo,
-          cortarType: region.cortarType,
+          name: region.name,
+          cortarNo: region.code,
+          cortarType: region.type,
         }),
       });
       await fetchActiveRegions();
@@ -141,14 +141,14 @@ export default function RegionsPage() {
               시/도
             </label>
             <select
-              value={selectedSido?.cortarNo || ""}
+              value={selectedSido?.code || ""}
               onChange={(e) => handleSidoChange(e.target.value)}
               className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
             >
               <option value="">선택하세요</option>
               {sidoList.map((r) => (
-                <option key={r.cortarNo} value={r.cortarNo}>
-                  {r.cortarName}
+                <option key={r.code} value={r.code}>
+                  {r.name}
                 </option>
               ))}
             </select>
@@ -158,15 +158,15 @@ export default function RegionsPage() {
               시/군/구
             </label>
             <select
-              value={selectedSigungu?.cortarNo || ""}
+              value={selectedSigungu?.code || ""}
               onChange={(e) => handleSigunguChange(e.target.value)}
               disabled={!selectedSido}
               className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
             >
               <option value="">선택하세요</option>
               {sigunguList.map((r) => (
-                <option key={r.cortarNo} value={r.cortarNo}>
-                  {r.cortarName}
+                <option key={r.code} value={r.code}>
+                  {r.name}
                 </option>
               ))}
             </select>
@@ -176,15 +176,15 @@ export default function RegionsPage() {
               읍/면/동
             </label>
             <select
-              value={selectedDong?.cortarNo || ""}
+              value={selectedDong?.code || ""}
               onChange={(e) => handleDongChange(e.target.value)}
               disabled={!selectedSigungu}
               className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
             >
               <option value="">선택하세요</option>
               {dongList.map((r) => (
-                <option key={r.cortarNo} value={r.cortarNo}>
-                  {r.cortarName}
+                <option key={r.code} value={r.code}>
+                  {r.name}
                 </option>
               ))}
             </select>
@@ -194,9 +194,9 @@ export default function RegionsPage() {
         {selected && (
           <div className="mt-5 flex items-center gap-3 border-t border-border pt-5">
             <span className="text-sm text-zinc-700">
-              선택: <span className="font-medium">{selected.cortarName}</span>
+              선택: <span className="font-medium">{selected.name}</span>
               <span className="ml-1.5 inline-flex rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs text-muted">
-                {cortarTypeLabel(selected.cortarType)}
+                {cortarTypeLabel(selected.type)}
               </span>
             </span>
             <button

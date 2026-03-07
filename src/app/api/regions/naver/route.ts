@@ -2,14 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchRegions } from "@/lib/naver-api";
 
 export async function GET(req: NextRequest) {
-  const cortarNo = req.nextUrl.searchParams.get("cortarNo") || "0000000000";
+  const si = req.nextUrl.searchParams.get("si") || undefined;
+  const gun = req.nextUrl.searchParams.get("gun") || undefined;
   try {
-    const data = await fetchRegions(cortarNo);
-    return NextResponse.json(data);
+    const regions = await fetchRegions(si, gun);
+    return NextResponse.json({ regions });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { cortarList: [], error: message },
+      {
+        regions: [],
+        error: error instanceof Error ? error.message : String(error),
+      },
       { status: 502 }
     );
   }
