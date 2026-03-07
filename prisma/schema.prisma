@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Region {
+  id         Int        @id @default(autoincrement())
+  name       String
+  cortarNo   String     @unique
+  cortarType String     // sido, sigungu, dong
+  parentId   Int?
+  parent     Region?    @relation("RegionHierarchy", fields: [parentId], references: [id])
+  children   Region[]   @relation("RegionHierarchy")
+  isActive   Boolean    @default(false)
+  listings   Listing[]
+  crawlLogs  CrawlLog[]
+  createdAt  DateTime   @default(now())
+}
+
+model Listing {
+  id              Int      @id @default(autoincrement())
+  naverArticleId  String   @unique
+  regionId        Int
+  region          Region   @relation(fields: [regionId], references: [id])
+  propertyType    String
+  tradeType       String
+  price           Int
+  rentPrice       Int?
+  area            Float?
+  floor           String?
+  buildingName    String?
+  address         String?
+  description     String?
+  naverUrl        String?
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AlertConfig {
+  id                  Int      @id @default(autoincrement())
+  channel             String
+  webhookUrl          String?
+  botToken            String?
+  chatId              String?
+  filterPropertyTypes String?
+  filterTradeTypes    String?
+  filterMinPrice      Int?
+  filterMaxPrice      Int?
+  filterRegionIds     String?
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+}
+
+model CrawlLog {
+  id              Int       @id @default(autoincrement())
+  regionId        Int
+  region          Region    @relation(fields: [regionId], references: [id])
+  startedAt       DateTime  @default(now())
+  finishedAt      DateTime?
+  totalFound      Int       @default(0)
+  newListings     Int       @default(0)
+  updatedListings Int       @default(0)
+  status          String    @default("running")
+  errorMessage    String?
+}
