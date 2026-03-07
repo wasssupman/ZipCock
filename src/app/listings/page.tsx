@@ -19,6 +19,7 @@ interface Listing {
   rentPrice: number | null;
   area: number | null;
   floor: string | null;
+  description: string | null;
   naverUrl: string | null;
   firstSeenAt: string;
   region: { name: string };
@@ -202,11 +203,14 @@ export default function ListingsPage() {
                       </p>
                     ) : null}
                   </div>
-                  {/* Area / Floor */}
+                  {/* Area / Floor / Direction */}
                   <div className="col-span-2 mt-1 text-right text-sm text-zinc-700 sm:mt-0">
-                    {listing.area ? `${listing.area}m\u00B2` : "-"}
+                    {listing.area ? `${listing.area}m²` : "-"}
                     {listing.floor ? (
                       <span className="ml-1 text-muted">/ {listing.floor}</span>
+                    ) : null}
+                    {listing.description ? (
+                      <span className="ml-1 text-xs text-muted" title={listing.description}>/ {listing.description.slice(0, 20)}</span>
                     ) : null}
                   </div>
                   {/* Date */}

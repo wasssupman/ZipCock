@@ -35,6 +35,7 @@ export interface ArticleItem {
   articleNumber: string;
   articleName: string;
   tradeType: string;
+  propertyType: string | null;
   price: number;
   rentPrice: number | null;
   area: number | null;

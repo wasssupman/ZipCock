@@ -9,7 +9,7 @@ export default async function DashboardPage() {
   const now = new Date();
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
-  const [regionCount, listingCount, recentCount, recentListings, lastCrawl] =
+  const [regionCount, listingCount, recentCount, recentListings, lastCrawl, deactivatedCount, recentDeactivated] =
     await Promise.all([
       prisma.region.count({ where: { isActive: true } }),
       prisma.listing.count({ where: { isActive: true } }),
@@ -23,6 +23,15 @@ export default async function DashboardPage() {
         include: { region: { select: { name: true } } },
       }),
       prisma.crawlLog.findFirst({ orderBy: { startedAt: "desc" } }),
+      prisma.listing.count({
+        where: { isActive: false, updatedAt: { gte: oneDayAgo } },
+      }),
+      prisma.listing.findMany({
+        where: { isActive: false, updatedAt: { gte: oneDayAgo } },
+        orderBy: { updatedAt: "desc" },
+        take: 5,
+        include: { region: { select: { name: true } } },
+      }),
     ]);
 
   const propertyLabels = PROPERTY_TYPES as Record<string, string>;
@@ -43,7 +52,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <StatCard
           label="모니터링 지역"
           value={regionCount}
@@ -57,11 +66,17 @@ export default async function DashboardPage() {
           className="animate-fade-in animate-fade-in-delay-1"
         />
         <StatCard
-          label="최근 24시간 신규"
+          label="24h 신규"
           value={recentCount}
           unit="건"
           accent
           className="animate-fade-in animate-fade-in-delay-2"
+        />
+        <StatCard
+          label="24h 사라진 매물"
+          value={deactivatedCount}
+          unit="건"
+          className="animate-fade-in animate-fade-in-delay-3"
         />
       </div>
 
@@ -82,14 +97,14 @@ export default async function DashboardPage() {
               상태:{" "}
               <span
                 className={
-                  lastCrawl.status === "completed"
+                  lastCrawl.status === "success"
                     ? "font-medium text-success"
                     : lastCrawl.status === "running"
                       ? "font-medium text-blue-600"
                       : "font-medium text-danger"
                 }
               >
-                {lastCrawl.status === "completed"
+                {lastCrawl.status === "success"
                   ? "완료"
                   : lastCrawl.status === "running"
                     ? "진행중"
@@ -133,8 +148,9 @@ export default async function DashboardPage() {
                     {propertyLabels[listing.propertyType] || listing.propertyType}
                     {" / "}
                     {tradeLabels[listing.tradeType] || listing.tradeType}
-                    {listing.area ? ` / ${listing.area}m\u00B2` : ""}
-                    {listing.floor ? ` / ${listing.floor}` : ""}
+                    {listing.area ? ` / ${listing.area}m²` : ""}
+                    {listing.floor ? ` / ${listing.floor}층` : ""}
+                    {listing.description ? ` / ${listing.description}` : ""}
                   </p>
                 </div>
                 <div className="ml-4 shrink-0 text-right">
@@ -151,6 +167,50 @@ export default async function DashboardPage() {
           </ul>
         )}
       </div>
+
+      {/* Recently deactivated listings */}
+      {recentDeactivated.length > 0 && (
+        <div className="animate-fade-in animate-fade-in-delay-4 rounded-xl border border-red-200 bg-red-50/30">
+          <div className="border-b border-red-200 px-5 py-4">
+            <h2 className="text-sm font-semibold text-zinc-900">
+              최근 사라진 매물
+              <span className="ml-2 text-xs font-normal text-muted">24시간 이내</span>
+            </h2>
+          </div>
+          <ul className="divide-y divide-red-100">
+            {recentDeactivated.map((listing) => (
+              <li
+                key={listing.id}
+                className="flex items-center justify-between px-5 py-3.5 opacity-75"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-zinc-700">
+                    {listing.buildingName || "매물"}
+                    <span className="ml-2 text-xs text-muted">
+                      {listing.region.name}
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {propertyLabels[listing.propertyType] || listing.propertyType}
+                    {" / "}
+                    {tradeLabels[listing.tradeType] || listing.tradeType}
+                    {listing.area ? ` / ${listing.area}m²` : ""}
+                    {listing.floor ? ` / ${listing.floor}층` : ""}
+                  </p>
+                </div>
+                <div className="ml-4 shrink-0 text-right">
+                  <p className="text-sm font-semibold text-zinc-500 line-through">
+                    {formatPrice(listing.price)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-red-500">
+                    {formatDate(listing.updatedAt.toISOString())} 삭제
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

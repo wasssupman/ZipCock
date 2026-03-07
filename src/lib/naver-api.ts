@@ -242,18 +242,30 @@ export async function fetchArticlesByComplex(
   if (data.isSuccess && data.result?.list) {
     return data.result.list.map((item) => {
       const info = (item.representativeArticleInfo || item) as Record<string, unknown>;
+      const priceInfo = (info.priceInfo || {}) as Record<string, unknown>;
+      const spaceInfo = (info.spaceInfo || {}) as Record<string, unknown>;
+      const articleDetail = (info.articleDetail || {}) as Record<string, unknown>;
+
+      // Price: dealPrice for 매매, warrantyPrice for 전세, fallback to top-level
+      const dealPrice = (priceInfo.dealPrice as number) || 0;
+      const warrantyPrice = (priceInfo.warrantyPrice as number) || 0;
+      const rentPriceRaw = (priceInfo.rentPrice as number) || 0;
+      // API returns price in 원 단위 → convert to 만원
+      const rawPrice = dealPrice || warrantyPrice;
+      const price = rawPrice > 0 ? Math.round(rawPrice / 10000) : 0;
+      const rentPrice = rentPriceRaw > 0 ? Math.round(rentPriceRaw / 10000) : null;
+
       return {
         articleNumber: String(info.articleNumber || ""),
         articleName: String(info.articleName || info.complexName || ""),
         tradeType: String(info.tradeType || tradeType),
-        price: (info.dealPrice as number) ||
-          (info.warrantyPrice as number) ||
-          0,
-        rentPrice: (info.monthlyPrice as number) || null,
-        area: (info.exclusiveArea as number) || null,
-        floor: (info.floor as string) || null,
-        direction: (info.direction as string) || null,
-        description: (info.description as string) || null,
+        propertyType: (info.realEstateType as string) || null,
+        price,
+        rentPrice,
+        area: (spaceInfo.exclusiveSpace as number) || (info.exclusiveArea as number) || null,
+        floor: (articleDetail.floorInfo as string) || (info.floor as string) || null,
+        direction: (articleDetail.direction as string) || (info.direction as string) || null,
+        description: (articleDetail.articleFeatureDescription as string) || (info.description as string) || null,
       };
     });
   }

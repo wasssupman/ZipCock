@@ -25,6 +25,26 @@ export function formatDate(dateStr: string): string {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** Direction code to Korean label */
+const DIRECTION_MAP: Record<string, string> = {
+  S: "남",
+  N: "북",
+  E: "동",
+  W: "서",
+  SE: "남동",
+  SW: "남서",
+  NE: "북동",
+  NW: "북서",
+  SS: "남남",
+  EW: "동서",
+  NS: "남북",
+};
+
+export function formatDirection(code: string | null): string | null {
+  if (!code) return null;
+  return DIRECTION_MAP[code] || code;
+}
+
 /** Region type code to Korean label */
 export function cortarTypeLabel(type: string): string {
   switch (type) {

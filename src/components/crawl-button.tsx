@@ -1,30 +1,106 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
+
+interface Progress {
+  regionName?: string;
+  complexName?: string;
+  regionCurrent?: number;
+  regionTotal?: number;
+  complexCurrent?: number;
+  complexTotal?: number;
+}
 
 export default function CrawlButton() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [progress, setProgress] = useState<Progress>({});
 
-  async function handleCrawl() {
+  const handleCrawl = useCallback(async () => {
     setLoading(true);
     setResult(null);
-    try {
-      const res = await fetch("/api/crawl", { method: "POST" });
-      if (!res.ok) throw new Error("크롤링 실패");
-      const data = await res.json();
-      const count = data.results?.length ?? 0;
-      setResult(`완료 (${count}개 지역 처리)`);
-      setTimeout(() => window.location.reload(), 1500);
-    } catch {
-      setResult("오류 발생");
-    } finally {
-      setLoading(false);
-    }
-  }
+    setProgress({});
+
+    const es = new EventSource("/api/crawl/stream");
+
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data);
+        switch (event.type) {
+          case "crawl:start":
+            setProgress({ regionTotal: event.totalRegions });
+            break;
+          case "crawl:region":
+            setProgress((p) => ({
+              ...p,
+              regionName: event.regionName,
+              regionCurrent: event.current,
+              regionTotal: event.total,
+              complexCurrent: undefined,
+              complexTotal: undefined,
+              complexName: undefined,
+            }));
+            break;
+          case "crawl:complex":
+            setProgress((p) => ({
+              ...p,
+              complexName: event.complexName,
+              complexCurrent: event.current,
+              complexTotal: event.total,
+            }));
+            break;
+          case "crawl:region_done":
+            setProgress((p) => ({
+              ...p,
+              complexName: undefined,
+              complexCurrent: undefined,
+              complexTotal: undefined,
+            }));
+            break;
+          case "crawl:complete":
+            es.close();
+            setResult(`완료 (${event.results?.length ?? 0}개 지역 처리)`);
+            setLoading(false);
+            setTimeout(() => window.location.reload(), 1500);
+            break;
+          case "crawl:error":
+            es.close();
+            setResult(`오류: ${event.message}`);
+            setLoading(false);
+            break;
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    es.onerror = () => {
+      es.close();
+      // Only set error if we haven't received a complete event
+      setLoading((prev) => {
+        if (prev) {
+          setResult("SSE 연결 오류");
+        }
+        return false;
+      });
+    };
+  }, []);
 
   return (
     <div className="flex items-center gap-3">
+      {loading && progress.regionName && (
+        <span className="text-xs text-muted-foreground">
+          {progress.regionCurrent}/{progress.regionTotal}{" "}
+          {progress.regionName}
+          {progress.complexName && (
+            <>
+              {" "}
+              — {progress.complexCurrent}/{progress.complexTotal}{" "}
+              {progress.complexName}
+            </>
+          )}
+        </span>
+      )}
       {result && (
         <span className="text-xs font-medium text-success">{result}</span>
       )}
