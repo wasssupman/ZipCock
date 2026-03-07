@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"ls /Users/sy/dev/Muzeri/postcss.config.* /Users/sy/dev/Muzeri/tailwind.config.* /Users/sy/dev/Muzeri/tsconfig.json 2>/dev/null\",\"description\":\"Check config files\"}",
+  "error": "Exit code 1\n(eval):1: no matches found: /Users/sy/dev/Muzeri/tailwind.config.*\n\n(eval):1: no matches found: /Users/sy/dev/Muzeri/tailwind.config.*",
+  "timestamp": "2026-03-07T01:55:31.464Z",
+  "retry_count": 1
+}

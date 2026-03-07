@@ -40,7 +40,8 @@ export default function RegionsPage() {
   useEffect(() => {
     fetch("/api/regions/naver?cortarNo=0000000000")
       .then((r) => r.json())
-      .then((d) => setSidoList(d.cortarList || []));
+      .then((d) => setSidoList(d.cortarList || []))
+      .catch(() => setSidoList([]));
     fetchActiveRegions();
   }, [fetchActiveRegions]);
 
@@ -54,7 +55,8 @@ export default function RegionsPage() {
     if (region) {
       fetch(`/api/regions/naver?cortarNo=${cortarNo}`)
         .then((r) => r.json())
-        .then((d) => setSigunguList(d.cortarList || []));
+        .then((d) => setSigunguList(d.cortarList || []))
+        .catch(() => setSigunguList([]));
     }
   }
 
@@ -66,7 +68,8 @@ export default function RegionsPage() {
     if (region) {
       fetch(`/api/regions/naver?cortarNo=${cortarNo}`)
         .then((r) => r.json())
-        .then((d) => setDongList(d.cortarList || []));
+        .then((d) => setDongList(d.cortarList || []))
+        .catch(() => setDongList([]));
     }
   }
 
