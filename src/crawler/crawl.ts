@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import {
   fetchComplexesByRegion,
   fetchArticlesByComplex,
-  closeBrowser,
 } from "@/lib/naver-api";
 import { TRADE_TYPES } from "@/lib/types";
 import type { ComplexItem, TradeTypeCode } from "@/lib/types";
@@ -62,7 +61,7 @@ export async function crawlRegion(regionId: number, cortarNo: string) {
     const skippedComplexes = allComplexes.length - activeComplexes.length;
 
     // Calculate how many API calls we save
-    const naiveApiCalls = allComplexes.length * 4; // 4 trade types per complex
+    const naiveApiCalls = allComplexes.length * tradeTypes.length;
     let actualApiCalls = 0;
     let skippedTradeTypeCalls = 0;
 
