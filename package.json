@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "crawler": "npx tsx src/crawler/index.ts",
+    "crawl:once": "npx tsx -e \"import('./src/crawler/crawl').then(m => m.crawlAllActiveRegions().then(console.log))\""
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.4.2",
