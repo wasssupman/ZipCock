@@ -40,7 +40,13 @@ async function ensureCookies(): Promise<string> {
   return cachedCookies!;
 }
 
-async function naverFetch(url: string): Promise<unknown> {
+let lastRefreshTime = 0;
+const MIN_REFRESH_INTERVAL_MS = 60_000; // Don't refresh cookies more than once per minute
+
+async function naverFetch(
+  url: string,
+  options?: { method?: string; body?: unknown }
+): Promise<unknown> {
   const cookieHeader = await ensureCookies();
   const headers: Record<string, string> = {
     Cookie: cookieHeader,
@@ -49,20 +55,33 @@ async function naverFetch(url: string): Promise<unknown> {
     Accept: "application/json, text/plain, */*",
     "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
   };
-
-  let response = await fetch(url, { headers });
-
-  if (response.status !== 200) {
-    // Refresh cookies once and retry
-    await refreshCookies();
-    const retryHeaders = {
-      ...headers,
-      Cookie: cachedCookies!,
-    };
-    response = await fetch(url, { headers: retryHeaders });
+  if (options?.body) {
+    headers["Content-Type"] = "application/json";
   }
 
-  return response.json();
+  const fetchOptions: RequestInit = {
+    method: options?.method || "GET",
+    headers,
+  };
+  if (options?.body) {
+    fetchOptions.body = JSON.stringify(options.body);
+  }
+
+  let response = await fetch(url, fetchOptions);
+
+  if (response.status !== 200 && Date.now() - lastRefreshTime > MIN_REFRESH_INTERVAL_MS) {
+    await refreshCookies();
+    lastRefreshTime = Date.now();
+    fetchOptions.headers = { ...headers, Cookie: cachedCookies! };
+    response = await fetch(url, fetchOptions);
+  }
+
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { isSuccess: false };
+  }
 }
 
 // --- Public API ---
@@ -76,8 +95,8 @@ export async function fetchRegions(
   si?: string,
   gun?: string
 ): Promise<RegionItem[]> {
-  // fetchRegions still uses Playwright to scrape HTML links.
-  // It is called infrequently from the web UI.
+  // Region list is embedded in SSR HTML, no separate API endpoint.
+  // Use Playwright to scrape links. Also refreshes cookies as a side effect.
   const browser = await chromium.launch({
     headless: false,
     args: ["--disable-blink-features=AutomationControlled"],
@@ -97,6 +116,11 @@ export async function fetchRegions(
     }
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
     await page.waitForTimeout(5000);
+
+    // Refresh cookies while we have the browser open
+    const cookies = await context.cookies();
+    cachedCookies = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+    cookieExpiry = Date.now() + COOKIE_TTL_MS;
 
     const links = await page.evaluate(() => {
       return Array.from(document.querySelectorAll("a"))
@@ -195,8 +219,20 @@ export async function fetchArticlesByComplex(
   complexNumber: number,
   tradeType: string = "A1"
 ): Promise<ArticleItem[]> {
-  const url = `https://fin.land.naver.com/front-api/v1/complex/article/list?complexNumber=${complexNumber}&tradeType=${tradeType}&page=0&size=20&orderType=DATE_DESC`;
-  const data = (await naverFetch(url)) as {
+  const url = "https://fin.land.naver.com/front-api/v1/complex/article/list";
+  const body = {
+    size: 30,
+    complexNumber: String(complexNumber),
+    tradeTypes: tradeType ? [tradeType] : [],
+    pyeongTypes: [],
+    dongNumbers: [],
+    userChannelType: "PC",
+    articleSortType: "RANKING_DESC",
+    seed: "",
+    lastInfo: [],
+  };
+
+  const data = (await naverFetch(url, { method: "POST", body })) as {
     isSuccess: boolean;
     result?: {
       list?: Array<Record<string, unknown>>;
@@ -204,25 +240,22 @@ export async function fetchArticlesByComplex(
   };
 
   if (data.isSuccess && data.result?.list) {
-    return data.result.list.map(
-      (item) => ({
-        articleNumber: String(
-          item.articleNumber || item.atclNo || ""
-        ),
-        articleName: String(
-          item.articleName || item.complexName || ""
-        ),
-        tradeType,
-        price: (item.dealPrice as number) ||
-          (item.warrantyPrice as number) ||
+    return data.result.list.map((item) => {
+      const info = (item.representativeArticleInfo || item) as Record<string, unknown>;
+      return {
+        articleNumber: String(info.articleNumber || ""),
+        articleName: String(info.articleName || info.complexName || ""),
+        tradeType: String(info.tradeType || tradeType),
+        price: (info.dealPrice as number) ||
+          (info.warrantyPrice as number) ||
           0,
-        rentPrice: (item.monthlyPrice as number) || null,
-        area: (item.exclusiveArea as number) || null,
-        floor: (item.floor as string) || null,
-        direction: (item.direction as string) || null,
-        description: (item.description as string) || null,
-      })
-    );
+        rentPrice: (info.monthlyPrice as number) || null,
+        area: (info.exclusiveArea as number) || null,
+        floor: (info.floor as string) || null,
+        direction: (info.direction as string) || null,
+        description: (info.description as string) || null,
+      };
+    });
   }
   return [];
 }

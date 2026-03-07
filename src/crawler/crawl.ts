@@ -154,7 +154,9 @@ export async function crawlRegion(regionId: number, cortarNo: string) {
 }
 
 export async function crawlAllActiveRegions() {
-  const regions = await prisma.region.findMany({ where: { isActive: true } });
+  const regions = await prisma.region.findMany({
+    where: { isActive: true, cortarType: "eup" },
+  });
   console.log(`[Crawl] Starting crawl for ${regions.length} active regions`);
 
   const results = [];

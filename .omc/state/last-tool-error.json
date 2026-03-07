@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"npx tsc --noEmit 2>&1\",\"timeout\":60000,\"description\":\"TypeScript type check\"}",
-  "error": "Exit code 2\nscripts/capture-api.ts(93,82): error TS1501: This regular expression flag is only available when targeting 'es2018' or later.\n\nscripts/capture-api.ts(93,82): error TS1501: This regular expression flag is only available when targeting 'es2018' or later.",
-  "timestamp": "2026-03-07T04:51:34.751Z",
+  "tool_input_preview": "{\"command\":\"npx prisma db push --skip-generate 2>&1\",\"description\":\"Push DB schema (full output)\"}",
+  "error": "Exit code 1\nLoaded Prisma config from prisma.config.ts.\n\n\n! unknown or unexpected option: --skip-generate\n\n🙌  Push the state from your Prisma schema to your database\n\nUsage\n\n  $ prisma db push [options]\n\n  The datasource URL configuration is read from the Prisma config file (e.g., prisma.config.ts).\n\nOptions\n\n           -h, --help   Display this help message\n             --config   Custom path to your Prisma config file\n             --schema   Custom path to your Prisma schema\n                 ...",
+  "timestamp": "2026-03-07T05:15:53.234Z",
   "retry_count": 1
 }
