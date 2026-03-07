@@ -1,65 +1,190 @@
-import Image from "next/image";
+import { prisma } from "@/lib/prisma";
+import { PROPERTY_TYPES, TRADE_TYPES } from "@/lib/types";
+import { formatPrice, formatDate } from "@/lib/format";
+import CrawlButton from "@/components/crawl-button";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function DashboardPage() {
+  const now = new Date();
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  const [regionCount, listingCount, recentCount, recentListings, lastCrawl] =
+    await Promise.all([
+      prisma.region.count({ where: { isActive: true } }),
+      prisma.listing.count({ where: { isActive: true } }),
+      prisma.listing.count({
+        where: { isActive: true, firstSeenAt: { gte: oneDayAgo } },
+      }),
+      prisma.listing.findMany({
+        where: { isActive: true },
+        orderBy: { firstSeenAt: "desc" },
+        take: 5,
+        include: { region: { select: { name: true } } },
+      }),
+      prisma.crawlLog.findFirst({ orderBy: { startedAt: "desc" } }),
+    ]);
+
+  const propertyLabels = PROPERTY_TYPES as Record<string, string>;
+  const tradeLabels = TRADE_TYPES as Record<string, string>;
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="space-y-8">
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
+            대시보드
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="mt-1 text-sm text-muted">
+            네이버 부동산 매물 모니터링 현황
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <CrawlButton />
+      </div>
+
+      {/* Stats cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard
+          label="모니터링 지역"
+          value={regionCount}
+          unit="개"
+          className="animate-fade-in"
+        />
+        <StatCard
+          label="총 매물"
+          value={listingCount}
+          unit="건"
+          className="animate-fade-in animate-fade-in-delay-1"
+        />
+        <StatCard
+          label="최근 24시간 신규"
+          value={recentCount}
+          unit="건"
+          accent
+          className="animate-fade-in animate-fade-in-delay-2"
+        />
+      </div>
+
+      {/* Last crawl status */}
+      {lastCrawl && (
+        <div className="animate-fade-in animate-fade-in-delay-3 rounded-xl border border-border bg-card p-5">
+          <h2 className="text-sm font-semibold text-zinc-900">
+            마지막 크롤링
+          </h2>
+          <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted">
+            <span>
+              시간:{" "}
+              <span className="text-zinc-700">
+                {formatDate(lastCrawl.startedAt.toISOString())}
+              </span>
+            </span>
+            <span>
+              상태:{" "}
+              <span
+                className={
+                  lastCrawl.status === "completed"
+                    ? "font-medium text-success"
+                    : lastCrawl.status === "running"
+                      ? "font-medium text-blue-600"
+                      : "font-medium text-danger"
+                }
+              >
+                {lastCrawl.status === "completed"
+                  ? "완료"
+                  : lastCrawl.status === "running"
+                    ? "진행중"
+                    : "오류"}
+              </span>
+            </span>
+            <span>
+              발견: <span className="text-zinc-700">{lastCrawl.totalFound}건</span>
+            </span>
+            <span>
+              신규: <span className="text-zinc-700">{lastCrawl.newListings}건</span>
+            </span>
+          </div>
         </div>
-      </main>
+      )}
+
+      {/* Recent listings */}
+      <div className="animate-fade-in animate-fade-in-delay-4 rounded-xl border border-border bg-card">
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="text-sm font-semibold text-zinc-900">최근 신규 매물</h2>
+        </div>
+        {recentListings.length === 0 ? (
+          <div className="px-5 py-12 text-center text-sm text-muted">
+            아직 수집된 매물이 없습니다
+          </div>
+        ) : (
+          <ul className="divide-y divide-zinc-100">
+            {recentListings.map((listing) => (
+              <li
+                key={listing.id}
+                className="flex items-center justify-between px-5 py-3.5 transition-colors hover:bg-zinc-50"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-zinc-900">
+                    {listing.buildingName || "매물"}
+                    <span className="ml-2 text-xs text-muted">
+                      {listing.region.name}
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {propertyLabels[listing.propertyType] || listing.propertyType}
+                    {" / "}
+                    {tradeLabels[listing.tradeType] || listing.tradeType}
+                    {listing.area ? ` / ${listing.area}m\u00B2` : ""}
+                    {listing.floor ? ` / ${listing.floor}` : ""}
+                  </p>
+                </div>
+                <div className="ml-4 shrink-0 text-right">
+                  <p className="text-sm font-semibold text-blue-700">
+                    {formatPrice(listing.price)}
+                    {listing.rentPrice ? ` / ${formatPrice(listing.rentPrice)}` : ""}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {formatDate(listing.firstSeenAt.toISOString())}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  unit,
+  accent,
+  className,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  accent?: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-xl border bg-card p-5 ${
+        accent ? "border-blue-200 bg-primary-light" : "border-border"
+      } ${className || ""}`}
+    >
+      <p className="text-xs font-medium uppercase tracking-wide text-muted">
+        {label}
+      </p>
+      <p
+        className={`mt-2 text-3xl font-bold tracking-tight ${
+          accent ? "text-blue-700" : "text-zinc-900"
+        }`}
+      >
+        {value.toLocaleString()}
+        <span className="ml-1 text-base font-medium text-muted">{unit}</span>
+      </p>
     </div>
   );
 }
