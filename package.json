@@ -1,5 +1,5 @@
 {
-  "name": "muzeri",
+  "name": "zipcock",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,6 +11,7 @@
     "crawl:once": "npx tsx -e \"import('./src/crawler/crawl').then(m => m.crawlAllActiveRegions().then(console.log))\""
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@prisma/adapter-better-sqlite3": "^7.4.2",
     "@prisma/client": "^7.4.2",
     "better-sqlite3": "^12.6.2",

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Muzeri - 네이버 부동산 모니터",
+  title: "ZipCock - 네이버 부동산 모니터",
   description: "네이버 부동산 매물 모니터링 및 알림 시스템",
 };
 
