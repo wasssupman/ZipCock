@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { PROPERTY_TYPES, TRADE_TYPES } from "@/lib/types";
 import { formatPrice, formatDate } from "@/lib/format";
+import { PriceBadge, InfraBadge } from "@/components/level-badge";
 
 interface Region {
   id: number;
@@ -21,6 +22,9 @@ interface Listing {
   floor: string | null;
   description: string | null;
   naverUrl: string | null;
+  priceLevel: string | null;
+  infraLevel: string | null;
+  aiAnalysis: string | null;
   firstSeenAt: string;
   region: { name: string };
 }
@@ -184,13 +188,21 @@ export default function ListingsPage() {
                     <p className="mt-0.5 text-xs text-muted">{listing.region.name}</p>
                   </div>
                   {/* Type */}
-                  <div className="col-span-2 mt-2 flex gap-1.5 sm:mt-0">
-                    <span className="inline-flex rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700">
-                      {propertyLabels[listing.propertyType] || listing.propertyType}
-                    </span>
-                    <span className="inline-flex rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-600">
-                      {tradeLabels[listing.tradeType] || listing.tradeType}
-                    </span>
+                  <div className="col-span-2 mt-2 sm:mt-0">
+                    <div className="flex gap-1.5">
+                      <span className="inline-flex rounded-md bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700">
+                        {propertyLabels[listing.propertyType] || listing.propertyType}
+                      </span>
+                      <span className="inline-flex rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-600">
+                        {tradeLabels[listing.tradeType] || listing.tradeType}
+                      </span>
+                    </div>
+                    {(listing.priceLevel || listing.infraLevel) && (
+                      <div className="mt-1 flex gap-1" title={listing.aiAnalysis || undefined}>
+                        <PriceBadge level={listing.priceLevel} />
+                        <InfraBadge level={listing.infraLevel} />
+                      </div>
+                    )}
                   </div>
                   {/* Price */}
                   <div className="col-span-2 mt-2 text-right sm:mt-0">

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { PROPERTY_TYPES, TRADE_TYPES } from "@/lib/types";
-import type { PropertyTypeCode, TradeTypeCode } from "@/lib/types";
+import { PROPERTY_TYPES, TRADE_TYPES, PRICE_LEVELS, INFRA_LEVELS } from "@/lib/types";
+import type { PropertyTypeCode, TradeTypeCode, PriceLevel, InfraLevel } from "@/lib/types";
 
 function formatPrice(
   price: number,
@@ -27,6 +27,8 @@ interface ListingInfo {
   floor: string | null;
   naverUrl: string | null;
   regionId: number;
+  priceLevel: string | null;
+  infraLevel: string | null;
 }
 
 function formatMessage(listing: ListingInfo, type: "new" | "removed"): string {
@@ -39,10 +41,18 @@ function formatMessage(listing: ListingInfo, type: "new" | "removed"): string {
   const area = listing.area ? `${listing.area}m²` : "-";
   const tag = type === "new" ? "🆕 신규 매물" : "❌ 사라진 매물";
 
+  const priceLevelTag = listing.priceLevel && listing.priceLevel in PRICE_LEVELS
+    ? ` [${PRICE_LEVELS[listing.priceLevel as PriceLevel]}]`
+    : "";
+  const infraLevelTag = listing.infraLevel && listing.infraLevel in INFRA_LEVELS
+    ? ` [${INFRA_LEVELS[listing.infraLevel as InfraLevel]}]`
+    : "";
+
   return [
     `[${tag}] ${listing.buildingName || "이름 없음"}`,
     `유형: ${propLabel} / ${tradeLabel}`,
-    `가격: ${price}`,
+    `가격: ${price}${priceLevelTag}`,
+    `인프라:${infraLevelTag || " -"}`,
     `면적: ${area} | 층: ${listing.floor || "-"}`,
     listing.naverUrl || "",
   ].join("\n");

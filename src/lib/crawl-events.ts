@@ -17,6 +17,8 @@ export type CrawlEvent =
       updatedListings: number;
       deactivated: number;
     }
+  | { type: "crawl:analyze"; regionName: string; count: number }
+  | { type: "crawl:analyze_done"; regionName: string; analyzed: number }
   | { type: "crawl:complete"; results: unknown[] }
   | { type: "crawl:error"; message: string };
 

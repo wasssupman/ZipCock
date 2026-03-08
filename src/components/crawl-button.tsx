@@ -9,6 +9,8 @@ interface Progress {
   regionTotal?: number;
   complexCurrent?: number;
   complexTotal?: number;
+  analyzing?: boolean;
+  analyzeCount?: number;
 }
 
 export default function CrawlButton() {
@@ -49,12 +51,29 @@ export default function CrawlButton() {
               complexTotal: event.total,
             }));
             break;
+          case "crawl:analyze":
+            setProgress((p) => ({
+              ...p,
+              analyzing: true,
+              analyzeCount: event.count,
+              complexName: undefined,
+              complexCurrent: undefined,
+              complexTotal: undefined,
+            }));
+            break;
+          case "crawl:analyze_done":
+            setProgress((p) => ({
+              ...p,
+              analyzing: false,
+            }));
+            break;
           case "crawl:region_done":
             setProgress((p) => ({
               ...p,
               complexName: undefined,
               complexCurrent: undefined,
               complexTotal: undefined,
+              analyzing: false,
             }));
             break;
           case "crawl:complete":
@@ -92,13 +111,15 @@ export default function CrawlButton() {
         <span className="text-xs text-muted-foreground">
           {progress.regionCurrent}/{progress.regionTotal}{" "}
           {progress.regionName}
-          {progress.complexName && (
+          {progress.analyzing ? (
+            <> — AI 분석 중 ({progress.analyzeCount}건)</>
+          ) : progress.complexName ? (
             <>
               {" "}
               — {progress.complexCurrent}/{progress.complexTotal}{" "}
               {progress.complexName}
             </>
-          )}
+          ) : null}
         </span>
       )}
       {result && (

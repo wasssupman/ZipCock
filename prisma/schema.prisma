@@ -39,6 +39,10 @@ model Listing {
   firstSeenAt     DateTime @default(now())
   lastSeenAt      DateTime @default(now())
   isActive        Boolean  @default(true)
+  priceLevel      String?
+  infraLevel      String?
+  aiAnalysis      String?
+  analyzedAt      DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

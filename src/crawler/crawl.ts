@@ -6,6 +6,7 @@ import {
 import { TRADE_TYPES } from "@/lib/types";
 import type { ComplexItem, TradeTypeCode } from "@/lib/types";
 import { crawlEmitter, type CrawlEvent } from "@/lib/crawl-events";
+import { analyzeNewListings } from "./analyze";
 
 export type ProgressCallback = (event: CrawlEvent) => void;
 
@@ -47,6 +48,7 @@ export async function crawlRegion(
   let totalFound = 0;
   let newListings = 0;
   let updatedListings = 0;
+  const newListingIds: number[] = [];
 
   try {
     // Step 1: Get all complexes in this region (eup code)
@@ -144,7 +146,7 @@ export async function crawlRegion(
             });
             updatedListings++;
           } else {
-            await prisma.listing.create({
+            const created = await prisma.listing.create({
               data: {
                 naverArticleId: article.articleNumber,
                 regionId,
@@ -159,6 +161,7 @@ export async function crawlRegion(
                 naverUrl: `https://fin.land.naver.com/complexes/${complex.complexNumber}?tab=article`,
               },
             });
+            newListingIds.push(created.id);
             newListings++;
           }
         }
@@ -183,6 +186,25 @@ export async function crawlRegion(
     });
     if (deactivated.count > 0) {
       console.log(`[Crawl] ${deactivated.count}건 매물 비활성 처리 (이번 크롤에서 미발견)`);
+    }
+
+    // AI 분석: 신규 매물에 대해 Claude CLI로 가격/인프라 레벨 판단
+    if (newListingIds.length > 0) {
+      emit({
+        type: "crawl:analyze",
+        regionName: meta?.regionName ?? cortarNo,
+        count: newListingIds.length,
+      });
+      try {
+        const analyzed = await analyzeNewListings(newListingIds);
+        emit({
+          type: "crawl:analyze_done",
+          regionName: meta?.regionName ?? cortarNo,
+          analyzed,
+        });
+      } catch (error) {
+        console.error(`[Crawl] AI 분석 오류:`, error instanceof Error ? error.message : String(error));
+      }
     }
 
     emit({

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { PROPERTY_TYPES, TRADE_TYPES } from "@/lib/types";
 import { formatPrice, formatDate } from "@/lib/format";
 import CrawlButton from "@/components/crawl-button";
+import { PriceBadge, InfraBadge } from "@/components/level-badge";
 
 export const dynamic = "force-dynamic";
 
@@ -230,6 +231,9 @@ function RegionSection({
     area: number | null;
     floor: string | null;
     description: string | null;
+    priceLevel: string | null;
+    infraLevel: string | null;
+    aiAnalysis: string | null;
     firstSeenAt: Date;
     region: { name: string };
   }[];
@@ -286,6 +290,12 @@ function RegionSection({
                   {listing.floor ? ` / ${listing.floor}층` : ""}
                   {listing.description ? ` / ${listing.description}` : ""}
                 </p>
+                {(listing.priceLevel || listing.infraLevel) && (
+                  <div className="mt-1 flex gap-1" title={listing.aiAnalysis || undefined}>
+                    <PriceBadge level={listing.priceLevel} />
+                    <InfraBadge level={listing.infraLevel} />
+                  </div>
+                )}
               </div>
               <div className="ml-4 shrink-0 text-right">
                 <p className="text-sm font-semibold text-blue-700">

@@ -12,6 +12,21 @@ export const TRADE_TYPES = {
   B3: "단기",
 } as const;
 
+export const PRICE_LEVELS = {
+  low: "저렴",
+  mid: "시세 적정",
+  high: "고가",
+} as const;
+
+export const INFRA_LEVELS = {
+  poor: "인프라 부족",
+  fair: "인프라 보통",
+  good: "인프라 우수",
+} as const;
+
+export type PriceLevel = keyof typeof PRICE_LEVELS;
+export type InfraLevel = keyof typeof INFRA_LEVELS;
+
 export type PropertyTypeCode = keyof typeof PROPERTY_TYPES;
 export type TradeTypeCode = keyof typeof TRADE_TYPES;
 
