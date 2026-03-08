@@ -1,3 +1,7 @@
+import { config } from "dotenv";
+config({ path: ".env.development" });
+config({ path: ".env", override: false });
+
 import cron from "node-cron";
 import { crawlAllActiveRegions } from "./crawl";
 import { sendAlerts } from "./alerts";
