@@ -2,9 +2,10 @@ import { prisma } from "@/lib/prisma";
 import {
   fetchComplexesByRegion,
   fetchArticlesByComplex,
+  fetchNonComplexArticles,
 } from "@/lib/naver-api";
 import { TRADE_TYPES } from "@/lib/types";
-import type { ComplexItem, TradeTypeCode } from "@/lib/types";
+import type { ArticleItem, ComplexItem, TradeTypeCode } from "@/lib/types";
 import { crawlEmitter, type CrawlEvent } from "@/lib/crawl-events";
 import { analyzeNewListings } from "./analyze";
 
@@ -246,6 +247,128 @@ export async function crawlRegion(
       `[Crawl] API calls: ${actualApiCalls} made, ${skippedTradeTypeCalls + skippedComplexes * tradeTypes.length} skipped ` +
         `(would have been ${naiveApiCalls} without optimization)`
     );
+
+    // Phase 2: Non-complex properties (주택/단독다가구/상가주택) via m.land API
+    try {
+      const nonComplexArticles = await fetchNonComplexArticles(
+        cortarNo,
+        tradeTypes
+      );
+
+      if (nonComplexArticles.length > 0) {
+        emit({
+          type: "crawl:non_complex",
+          regionName: meta?.regionName ?? cortarNo,
+          count: nonComplexArticles.length,
+        });
+        console.log(`[Crawl] 비단지 매물 ${nonComplexArticles.length}건 처리 중...`);
+
+        // Group by tradeType for processing
+        const byTrade = new Map<string, ArticleItem[]>();
+        for (const article of nonComplexArticles) {
+          const tt = article.tradeType || "A1";
+          if (!byTrade.has(tt)) byTrade.set(tt, []);
+          byTrade.get(tt)!.push(article);
+        }
+
+        for (const [tt, articles] of byTrade) {
+          const validArticles = articles.filter(
+            (a) => a.articleNumber && a.price > 0
+          );
+          if (validArticles.length === 0) continue;
+
+          totalFound += validArticles.length;
+          const articleNumbers = validArticles.map((a) => a.articleNumber);
+          const existingListings = await prisma.listing.findMany({
+            where: { naverArticleId: { in: articleNumbers } },
+          });
+          const existingMap = new Map(
+            existingListings.map((l) => [l.naverArticleId, l] as const)
+          );
+
+          const toUpdate: typeof validArticles = [];
+          const toCreate: typeof validArticles = [];
+          for (const article of validArticles) {
+            if (existingMap.has(article.articleNumber)) {
+              toUpdate.push(article);
+            } else {
+              toCreate.push(article);
+            }
+          }
+
+          if (toUpdate.length > 0) {
+            const priceChanges: { listingId: number; oldPrice: number; newPrice: number }[] = [];
+            for (const article of toUpdate) {
+              const existing = existingMap.get(article.articleNumber)!;
+              if (article.price > 0 && existing.price !== article.price) {
+                priceChanges.push({
+                  listingId: existing.id,
+                  oldPrice: existing.price,
+                  newPrice: article.price,
+                });
+              }
+            }
+
+            await prisma.$transaction([
+              ...toUpdate.map((article) => {
+                const existing = existingMap.get(article.articleNumber)!;
+                return prisma.listing.update({
+                  where: { id: existing.id },
+                  data: {
+                    lastSeenAt: new Date(),
+                    isActive: true,
+                    ...(article.price > 0 ? { price: article.price } : {}),
+                    ...(article.rentPrice != null ? { rentPrice: article.rentPrice } : {}),
+                    ...(article.area != null ? { area: article.area } : {}),
+                    ...(article.floor != null ? { floor: article.floor } : {}),
+                    ...(article.description != null ? { description: article.description } : {}),
+                    propertyType: article.propertyType || existing.propertyType,
+                  },
+                });
+              }),
+              ...priceChanges.map((pc) =>
+                prisma.priceHistory.create({ data: pc })
+              ),
+            ]);
+
+            if (priceChanges.length > 0) {
+              console.log(`[Crawl]   → 비단지 ${priceChanges.length}건 가격 변동 감지`);
+            }
+            updatedListings += toUpdate.length;
+          }
+
+          if (toCreate.length > 0) {
+            for (const article of toCreate) {
+              const created = await prisma.listing.create({
+                data: {
+                  naverArticleId: article.articleNumber,
+                  regionId,
+                  propertyType: article.propertyType || "DDDGG",
+                  tradeType: tt,
+                  price: article.price,
+                  rentPrice: article.rentPrice || null,
+                  area: article.area || null,
+                  floor: article.floor || null,
+                  buildingName: article.articleName || null,
+                  description: article.description || null,
+                  articleConfirmDate: article.articleConfirmDate || null,
+                  naverUrl: `https://m.land.naver.com/article/info/${article.articleNumber}`,
+                },
+              });
+              newListingIds.push(created.id);
+            }
+            newListings += toCreate.length;
+          }
+        }
+
+        console.log(`[Crawl] 비단지 매물 처리 완료: ${nonComplexArticles.length}건`);
+      }
+    } catch (error) {
+      console.error(
+        `[Crawl] 비단지 매물 크롤링 오류:`,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
 
     // Deactivate listings not seen in this crawl
     // Safety: skip deactivation if we found 0 listings but there are active ones

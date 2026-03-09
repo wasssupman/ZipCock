@@ -10,6 +10,7 @@ export type CrawlEvent =
       total: number;
       regionName: string;
     }
+  | { type: "crawl:non_complex"; regionName: string; count: number }
   | {
       type: "crawl:region_done";
       regionName: string;
