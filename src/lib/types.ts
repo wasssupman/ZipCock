@@ -4,7 +4,6 @@ export const PROPERTY_TYPES = {
   A03: "빌라",
   A04: "아파텔",
   DDDGG: "단독/다가구",
-  JWJT: "주택",
   SG: "상가주택",
 } as const;
 
@@ -15,9 +14,8 @@ export const MLAND_PROPERTY_TYPE_MAP: Record<string, string> = {
   C03: "DDDGG",  // 단독/다가구
   C04: "DDDGG",  // 단독/다가구 (별칭)
   D05: "SG",     // 상가주택
-  JWJT: "JWJT",  // 주택
   SGJT: "SG",    // 상가주택
-  HOJT: "JWJT",  // 전원주택 → 주택
+  HOJT: "DDDGG", // 전원주택 → 단독/다가구
   DDDGG: "DDDGG",
 };
 

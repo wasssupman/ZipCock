@@ -339,8 +339,19 @@ export async function crawlRegion(
 
           if (toCreate.length > 0) {
             for (const article of toCreate) {
-              const created = await prisma.listing.create({
-                data: {
+              const created = await prisma.listing.upsert({
+                where: { naverArticleId: article.articleNumber },
+                update: {
+                  lastSeenAt: new Date(),
+                  isActive: true,
+                  ...(article.price > 0 ? { price: article.price } : {}),
+                  ...(article.rentPrice != null ? { rentPrice: article.rentPrice } : {}),
+                  ...(article.area != null ? { area: article.area } : {}),
+                  ...(article.floor != null ? { floor: article.floor } : {}),
+                  ...(article.description != null ? { description: article.description } : {}),
+                  propertyType: article.propertyType || "DDDGG",
+                },
+                create: {
                   naverArticleId: article.articleNumber,
                   regionId,
                   propertyType: article.propertyType || "DDDGG",
