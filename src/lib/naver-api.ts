@@ -10,6 +10,7 @@ const COOKIE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 let cachedCookies: string | null = null;
 let cookieExpiry: number = 0;
+let refreshPromise: Promise<void> | null = null;
 
 async function refreshCookies(): Promise<void> {
   const browser = await chromium.launch({
@@ -35,7 +36,12 @@ async function refreshCookies(): Promise<void> {
 
 async function ensureCookies(): Promise<string> {
   if (!cachedCookies || Date.now() >= cookieExpiry) {
-    await refreshCookies();
+    if (!refreshPromise) {
+      refreshPromise = refreshCookies().finally(() => {
+        refreshPromise = null;
+      });
+    }
+    await refreshPromise;
   }
   return cachedCookies!;
 }
@@ -212,7 +218,7 @@ export async function fetchComplexesByRegion(
       totalCount: data.result.totalCount,
     };
   }
-  return { list: [], hasNextPage: false, totalCount: 0 };
+  throw new Error(`Naver API error: complexes fetch failed for region ${eupCode}`);
 }
 
 export async function fetchArticlesByComplex(
@@ -220,37 +226,48 @@ export async function fetchArticlesByComplex(
   tradeType: string = "A1"
 ): Promise<ArticleItem[]> {
   const url = "https://fin.land.naver.com/front-api/v1/complex/article/list";
-  const body = {
-    size: 30,
-    complexNumber: String(complexNumber),
-    tradeTypes: tradeType ? [tradeType] : [],
-    pyeongTypes: [],
-    dongNumbers: [],
-    userChannelType: "PC",
-    articleSortType: "RANKING_DESC",
-    seed: "",
-    lastInfo: [],
-  };
+  const allArticles: ArticleItem[] = [];
+  let lastInfo: unknown[] = [];
+  let pageCount = 0;
 
-  const data = (await naverFetch(url, { method: "POST", body })) as {
-    isSuccess: boolean;
-    result?: {
-      list?: Array<Record<string, unknown>>;
+  while (true) {
+    const body = {
+      size: 30,
+      complexNumber: String(complexNumber),
+      tradeTypes: tradeType ? [tradeType] : [],
+      pyeongTypes: [],
+      dongNumbers: [],
+      userChannelType: "PC",
+      articleSortType: "RANKING_DESC",
+      seed: "",
+      lastInfo,
     };
-  };
 
-  if (data.isSuccess && data.result?.list) {
-    return data.result.list.map((item) => {
+    const data = (await naverFetch(url, { method: "POST", body })) as {
+      isSuccess: boolean;
+      result?: {
+        list?: Array<Record<string, unknown>>;
+        hasNextPage?: boolean;
+        lastInfo?: unknown[];
+      };
+    };
+
+    if (!data.isSuccess || !data.result?.list) {
+      if (pageCount === 0) {
+        throw new Error(`Naver API error: article fetch failed for complex ${complexNumber}`);
+      }
+      break;
+    }
+
+    const articles = data.result.list.map((item) => {
       const info = (item.representativeArticleInfo || item) as Record<string, unknown>;
       const priceInfo = (info.priceInfo || {}) as Record<string, unknown>;
       const spaceInfo = (info.spaceInfo || {}) as Record<string, unknown>;
       const articleDetail = (info.articleDetail || {}) as Record<string, unknown>;
 
-      // Price: dealPrice for 매매, warrantyPrice for 전세, fallback to top-level
       const dealPrice = (priceInfo.dealPrice as number) || 0;
       const warrantyPrice = (priceInfo.warrantyPrice as number) || 0;
       const rentPriceRaw = (priceInfo.rentPrice as number) || 0;
-      // API returns price in 원 단위 → convert to 만원
       const rawPrice = dealPrice || warrantyPrice;
       const price = rawPrice > 0 ? Math.round(rawPrice / 10000) : 0;
       const rentPrice = rentPriceRaw > 0 ? Math.round(rentPriceRaw / 10000) : null;
@@ -266,8 +283,17 @@ export async function fetchArticlesByComplex(
         floor: (articleDetail.floorInfo as string) || (info.floor as string) || null,
         direction: (articleDetail.direction as string) || (info.direction as string) || null,
         description: (articleDetail.articleFeatureDescription as string) || (info.description as string) || null,
+        articleConfirmDate: (articleDetail.articleConfirmYMD as string) || (info.articleConfirmYMD as string) || null,
       };
     });
+
+    allArticles.push(...articles);
+    pageCount++;
+
+    if (!data.result.hasNextPage || articles.length < 30) break;
+    lastInfo = data.result.lastInfo ?? [];
+    await new Promise((r) => setTimeout(r, 1500));
   }
-  return [];
+
+  return allArticles;
 }

@@ -3,6 +3,9 @@ export const PROPERTY_TYPES = {
   A02: "오피스텔",
   A03: "빌라",
   A04: "아파텔",
+  DDDGG: "단독/다가구",
+  JWJT: "주택",
+  SG: "상가주택",
 } as const;
 
 export const TRADE_TYPES = {
@@ -57,4 +60,6 @@ export interface ArticleItem {
   floor: string | null;
   direction: string | null;
   description: string | null;
+  /** 네이버 매물 등록(확인)일 — YYYYMMDD 또는 YYYY.MM.DD 등 */
+  articleConfirmDate: string | null;
 }

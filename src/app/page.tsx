@@ -1,12 +1,22 @@
 import { prisma } from "@/lib/prisma";
 import { PROPERTY_TYPES, TRADE_TYPES } from "@/lib/types";
-import { formatPrice, formatDate } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import CrawlButton from "@/components/crawl-button";
-import { PriceBadge, InfraBadge } from "@/components/level-badge";
+import RegionSection from "@/components/region-section";
+import AutoRefresh from "@/components/auto-refresh";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+const REGIONS_PER_PAGE = 5;
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const params = await searchParams;
+  const currentPage = Math.max(1, Number(params.page) || 1);
   const now = new Date();
   const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
@@ -39,25 +49,31 @@ export default async function DashboardPage() {
     }),
   ]);
 
-  // Determine top 5 regions by active listing count
+  // Sort all regions by active listing count
   const regionCountMap = new Map(
     listingsByRegion.map((g) => [g.regionId, g._count])
   );
-  const top5Regions = activeRegions
+  const allSortedRegions = activeRegions
     .map((r) => ({ ...r, totalListings: regionCountMap.get(r.id) || 0 }))
-    .filter((r) => r.totalListings > 0)
-    .sort((a, b) => b.totalListings - a.totalListings)
-    .slice(0, 5);
+    .sort((a, b) => b.totalListings - a.totalListings);
 
-  const top5Ids = top5Regions.map((r) => r.id);
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(allSortedRegions.length / REGIONS_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const pagedRegions = allSortedRegions.slice(
+    (safePage - 1) * REGIONS_PER_PAGE,
+    safePage * REGIONS_PER_PAGE
+  );
 
-  // Fetch new and deactivated listings for top 5 regions
+  const pagedIds = pagedRegions.map((r) => r.id);
+
+  // Fetch new and deactivated listings only for current page's regions
   const [newListingsAll, deactivatedListingsAll] = await Promise.all([
     prisma.listing.findMany({
       where: {
         isActive: true,
         firstSeenAt: { gte: oneDayAgo },
-        regionId: { in: top5Ids },
+        regionId: { in: pagedIds },
       },
       orderBy: { firstSeenAt: "desc" },
       include: { region: { select: { name: true } } },
@@ -66,7 +82,7 @@ export default async function DashboardPage() {
       where: {
         isActive: false,
         updatedAt: { gte: oneDayAgo },
-        regionId: { in: top5Ids },
+        regionId: { in: pagedIds },
       },
       orderBy: { updatedAt: "desc" },
       include: { region: { select: { name: true } } },
@@ -93,6 +109,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
+      <AutoRefresh />
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
@@ -176,7 +193,7 @@ export default async function DashboardPage() {
       )}
 
       {/* Region sections */}
-      {top5Regions.map((region) => {
+      {pagedRegions.map((region) => {
         const newListings = newByRegion.get(region.id) || [];
         const deactivatedListings = deactivatedByRegion.get(region.id) || [];
         const regionDisplayName = region.parent
@@ -190,172 +207,79 @@ export default async function DashboardPage() {
             totalListings={region.totalListings}
             newCount={newListings.length}
             deactivatedCount={deactivatedListings.length}
-            newListings={newListings}
-            deactivatedListings={deactivatedListings}
+            newListings={newListings.map((l) => ({
+              ...l,
+              firstSeenAt: l.firstSeenAt.toISOString(),
+            }))}
+            deactivatedListings={deactivatedListings.map((l) => ({
+              ...l,
+              updatedAt: l.updatedAt.toISOString(),
+            }))}
             propertyLabels={propertyLabels}
             tradeLabels={tradeLabels}
           />
         );
       })}
 
-      {top5Regions.length === 0 && (
+      {allSortedRegions.length === 0 && (
         <div className="rounded-xl border border-border bg-card px-5 py-12 text-center text-sm text-muted">
           아직 수집된 매물이 없습니다
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <PaginationLink page={safePage - 1} disabled={safePage <= 1}>
+            이전
+          </PaginationLink>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+              <Link
+                key={p}
+                href={p === 1 ? "/" : `/?page=${p}`}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  p === safePage
+                    ? "bg-primary text-white"
+                    : "text-zinc-600 hover:bg-zinc-100"
+                }`}
+              >
+                {p}
+              </Link>
+            ))}
+          </div>
+          <PaginationLink page={safePage + 1} disabled={safePage >= totalPages}>
+            다음
+          </PaginationLink>
         </div>
       )}
     </div>
   );
 }
 
-function RegionSection({
-  name,
-  totalListings,
-  newCount,
-  deactivatedCount,
-  newListings,
-  deactivatedListings,
-  propertyLabels,
-  tradeLabels,
+function PaginationLink({
+  page,
+  disabled,
+  children,
 }: {
-  name: string;
-  totalListings: number;
-  newCount: number;
-  deactivatedCount: number;
-  newListings: {
-    id: number;
-    buildingName: string | null;
-    propertyType: string;
-    tradeType: string;
-    price: number;
-    rentPrice: number | null;
-    area: number | null;
-    floor: string | null;
-    description: string | null;
-    priceLevel: string | null;
-    infraLevel: string | null;
-    aiAnalysis: string | null;
-    firstSeenAt: Date;
-    region: { name: string };
-  }[];
-  deactivatedListings: {
-    id: number;
-    buildingName: string | null;
-    propertyType: string;
-    tradeType: string;
-    price: number;
-    rentPrice: number | null;
-    area: number | null;
-    floor: string | null;
-    updatedAt: Date;
-    region: { name: string };
-  }[];
-  propertyLabels: Record<string, string>;
-  tradeLabels: Record<string, string>;
+  page: number;
+  disabled: boolean;
+  children: React.ReactNode;
 }) {
+  if (disabled) {
+    return (
+      <span className="rounded-lg border border-border bg-white px-3 py-1.5 text-sm font-medium text-zinc-400">
+        {children}
+      </span>
+    );
+  }
   return (
-    <div className="animate-fade-in rounded-xl border border-border bg-card">
-      {/* Region header */}
-      <div className="border-b border-border px-5 py-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-900">
-            📍 {name}
-          </h2>
-          <div className="flex items-center gap-4 text-xs text-muted">
-            <span>총 <span className="font-medium text-zinc-700">{totalListings.toLocaleString()}</span>건</span>
-            <span>신규 <span className="font-medium text-blue-600">{newCount}</span>건</span>
-            {deactivatedCount > 0 && (
-              <span>사라진 <span className="font-medium text-red-500">{deactivatedCount}</span>건</span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* New listings */}
-      {newListings.length > 0 ? (
-        <ul className="divide-y divide-zinc-100">
-          {newListings.map((listing) => (
-            <li
-              key={listing.id}
-              className="flex items-center justify-between px-5 py-3.5 transition-colors hover:bg-zinc-50"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-zinc-900">
-                  {listing.buildingName || "매물"}
-                </p>
-                <p className="mt-0.5 text-xs text-muted">
-                  {propertyLabels[listing.propertyType] || listing.propertyType}
-                  {" / "}
-                  {tradeLabels[listing.tradeType] || listing.tradeType}
-                  {listing.area ? ` / ${listing.area}m²` : ""}
-                  {listing.floor ? ` / ${listing.floor}층` : ""}
-                  {listing.description ? ` / ${listing.description}` : ""}
-                </p>
-                {(listing.priceLevel || listing.infraLevel) && (
-                  <div className="mt-1 flex gap-1" title={listing.aiAnalysis || undefined}>
-                    <PriceBadge level={listing.priceLevel} />
-                    <InfraBadge level={listing.infraLevel} />
-                  </div>
-                )}
-              </div>
-              <div className="ml-4 shrink-0 text-right">
-                <p className="text-sm font-semibold text-blue-700">
-                  {formatPrice(listing.price)}
-                  {listing.rentPrice ? ` / ${formatPrice(listing.rentPrice)}` : ""}
-                </p>
-                <p className="mt-0.5 text-xs text-muted">
-                  {formatDate(listing.firstSeenAt.toISOString())}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div className="px-5 py-8 text-center text-xs text-muted">
-          24시간 내 신규 매물 없음
-        </div>
-      )}
-
-      {/* Deactivated listings */}
-      {deactivatedListings.length > 0 && (
-        <div className="border-t border-red-200 bg-red-50/30">
-          <div className="border-b border-red-100 px-5 py-3">
-            <h3 className="text-xs font-medium text-red-600">
-              사라진 매물
-              <span className="ml-1 font-normal text-muted">24시간 이내</span>
-            </h3>
-          </div>
-          <ul className="divide-y divide-red-100">
-            {deactivatedListings.map((listing) => (
-              <li
-                key={listing.id}
-                className="flex items-center justify-between px-5 py-3.5 opacity-75"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-zinc-700">
-                    {listing.buildingName || "매물"}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted">
-                    {propertyLabels[listing.propertyType] || listing.propertyType}
-                    {" / "}
-                    {tradeLabels[listing.tradeType] || listing.tradeType}
-                    {listing.area ? ` / ${listing.area}m²` : ""}
-                    {listing.floor ? ` / ${listing.floor}층` : ""}
-                  </p>
-                </div>
-                <div className="ml-4 shrink-0 text-right">
-                  <p className="text-sm font-semibold text-zinc-500 line-through">
-                    {formatPrice(listing.price)}
-                  </p>
-                  <p className="mt-0.5 text-xs text-red-500">
-                    {formatDate(listing.updatedAt.toISOString())} 삭제
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
+    <Link
+      href={page === 1 ? "/" : `/?page=${page}`}
+      className="rounded-lg border border-border bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
+    >
+      {children}
+    </Link>
   );
 }
 

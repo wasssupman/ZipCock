@@ -11,7 +11,7 @@ model Region {
   id         Int        @id @default(autoincrement())
   name       String
   cortarNo   String     @unique
-  cortarType String     // sido, sigungu, dong
+  cortarType String // sido, sigungu, dong
   parentId   Int?
   parent     Region?    @relation("RegionHierarchy", fields: [parentId], references: [id])
   children   Region[]   @relation("RegionHierarchy")
@@ -22,29 +22,36 @@ model Region {
 }
 
 model Listing {
-  id              Int      @id @default(autoincrement())
-  naverArticleId  String   @unique
-  regionId        Int
-  region          Region   @relation(fields: [regionId], references: [id])
-  propertyType    String
-  tradeType       String
-  price           Int
-  rentPrice       Int?
-  area            Float?
-  floor           String?
-  buildingName    String?
-  address         String?
-  description     String?
-  naverUrl        String?
-  firstSeenAt     DateTime @default(now())
-  lastSeenAt      DateTime @default(now())
-  isActive        Boolean  @default(true)
-  priceLevel      String?
-  infraLevel      String?
-  aiAnalysis      String?
-  analyzedAt      DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             Int            @id @default(autoincrement())
+  naverArticleId String         @unique
+  regionId       Int
+  region         Region         @relation(fields: [regionId], references: [id])
+  propertyType   String
+  tradeType      String
+  price          Int
+  rentPrice      Int?
+  area           Float?
+  floor          String?
+  buildingName   String?
+  address        String?
+  description    String?
+  naverUrl            String?
+  articleConfirmDate  String?
+  firstSeenAt         DateTime       @default(now())
+  lastSeenAt     DateTime       @default(now())
+  isActive       Boolean        @default(true)
+  priceLevel     String?
+  infraLevel     String?
+  aiAnalysis     String?
+  analyzedAt     DateTime?
+  priceHistory   PriceHistory[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([regionId, isActive, lastSeenAt])
+  @@index([isActive, firstSeenAt])
+  @@index([isActive, updatedAt])
+  @@index([regionId, propertyType, tradeType, isActive])
 }
 
 model AlertConfig {
@@ -63,14 +70,26 @@ model AlertConfig {
 }
 
 model CrawlLog {
-  id              Int       @id @default(autoincrement())
-  regionId        Int
-  region          Region    @relation(fields: [regionId], references: [id])
-  startedAt       DateTime  @default(now())
-  finishedAt      DateTime?
-  totalFound      Int       @default(0)
-  newListings     Int       @default(0)
-  updatedListings Int       @default(0)
-  status          String    @default("running")
-  errorMessage    String?
+  id                  Int       @id @default(autoincrement())
+  regionId            Int
+  region              Region    @relation(fields: [regionId], references: [id])
+  startedAt           DateTime  @default(now())
+  finishedAt          DateTime?
+  totalFound          Int       @default(0)
+  newListings         Int       @default(0)
+  updatedListings     Int       @default(0)
+  deactivatedListings Int       @default(0)
+  status              String    @default("running")
+  errorMessage        String?
+}
+
+model PriceHistory {
+  id        Int      @id @default(autoincrement())
+  listingId Int
+  listing   Listing  @relation(fields: [listingId], references: [id])
+  oldPrice  Int
+  newPrice  Int
+  changedAt DateTime @default(now())
+
+  @@index([listingId])
 }

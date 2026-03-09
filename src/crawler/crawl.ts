@@ -40,6 +40,15 @@ export async function crawlRegion(
     onProgress?.(event);
   };
 
+  // Prevent concurrent crawls for the same region
+  const runningCrawl = await prisma.crawlLog.findFirst({
+    where: { regionId, status: "running" },
+  });
+  if (runningCrawl) {
+    console.log(`[Crawl] Region ${regionId} already being crawled, skipping`);
+    return { totalFound: 0, newListings: 0, updatedListings: 0, deactivated: 0 };
+  }
+
   const crawlStartedAt = new Date();
   const log = await prisma.crawlLog.create({
     data: { regionId, status: "running" },
@@ -113,39 +122,101 @@ export async function crawlRegion(
         console.log(
           `[Crawl]   → ${TRADE_TYPES[tradeType]} ${count}건 조회 중...`
         );
-        const articles = await fetchArticlesByComplex(
-          complex.complexNumber,
-          tradeType
-        );
+
+        let articles;
+        try {
+          articles = await fetchArticlesByComplex(
+            complex.complexNumber,
+            tradeType
+          );
+        } catch (error) {
+          console.error(
+            `[Crawl]   → API 오류 (${complex.name} ${TRADE_TYPES[tradeType]}):`,
+            error instanceof Error ? error.message : String(error)
+          );
+          continue;
+        }
+
         console.log(
           `[Crawl]   → ${articles.length}건 수집`
         );
 
-        for (const article of articles) {
-          // Skip invalid articles: no ID or no price
-          if (!article.articleNumber || article.price <= 0) continue;
-          totalFound++;
-          const existing = await prisma.listing.findUnique({
-            where: { naverArticleId: article.articleNumber },
-          });
+        // Batch lookup: find existing articles
+        const validArticles = articles.filter(
+          (a) => a.articleNumber && a.price > 0
+        );
+        if (validArticles.length === 0) continue;
 
-          if (existing) {
-            await prisma.listing.update({
-              where: { id: existing.id },
-              data: {
-                lastSeenAt: new Date(),
-                isActive: true,
-                // Update price if it was 0 or changed
-                ...(article.price > 0 ? { price: article.price } : {}),
-                ...(article.rentPrice != null ? { rentPrice: article.rentPrice } : {}),
-                ...(article.area != null ? { area: article.area } : {}),
-                ...(article.floor != null ? { floor: article.floor } : {}),
-                ...(article.description != null ? { description: article.description } : {}),
-                propertyType: article.propertyType || existing.propertyType,
-              },
-            });
-            updatedListings++;
+        totalFound += validArticles.length;
+        const articleNumbers = validArticles.map((a) => a.articleNumber);
+        const existingListings = await prisma.listing.findMany({
+          where: { naverArticleId: { in: articleNumbers } },
+        });
+        const existingMap = new Map(
+          existingListings.map((l) => [l.naverArticleId, l] as const)
+        );
+
+        // Separate into updates and creates
+        const toUpdate: typeof validArticles = [];
+        const toCreate: typeof validArticles = [];
+        for (const article of validArticles) {
+          if (existingMap.has(article.articleNumber)) {
+            toUpdate.push(article);
           } else {
+            toCreate.push(article);
+          }
+        }
+
+        // Batch update existing listings + detect price changes
+        if (toUpdate.length > 0) {
+          const priceChanges: { listingId: number; oldPrice: number; newPrice: number }[] = [];
+          for (const article of toUpdate) {
+            const existing = existingMap.get(article.articleNumber)!;
+            if (article.price > 0 && existing.price !== article.price) {
+              priceChanges.push({
+                listingId: existing.id,
+                oldPrice: existing.price,
+                newPrice: article.price,
+              });
+            }
+          }
+
+          await prisma.$transaction([
+            ...toUpdate.map((article) => {
+              const existing = existingMap.get(article.articleNumber)!;
+              return prisma.listing.update({
+                where: { id: existing.id },
+                data: {
+                  lastSeenAt: new Date(),
+                  isActive: true,
+                  ...(article.price > 0 ? { price: article.price } : {}),
+                  ...(article.rentPrice != null
+                    ? { rentPrice: article.rentPrice }
+                    : {}),
+                  ...(article.area != null ? { area: article.area } : {}),
+                  ...(article.floor != null ? { floor: article.floor } : {}),
+                  ...(article.description != null
+                    ? { description: article.description }
+                    : {}),
+                  propertyType:
+                    article.propertyType || existing.propertyType,
+                },
+              });
+            }),
+            ...priceChanges.map((pc) =>
+              prisma.priceHistory.create({ data: pc })
+            ),
+          ]);
+
+          if (priceChanges.length > 0) {
+            console.log(`[Crawl]   → ${priceChanges.length}건 가격 변동 감지`);
+          }
+          updatedListings += toUpdate.length;
+        }
+
+        // Batch create new listings
+        if (toCreate.length > 0) {
+          for (const article of toCreate) {
             const created = await prisma.listing.create({
               data: {
                 naverArticleId: article.articleNumber,
@@ -158,12 +229,13 @@ export async function crawlRegion(
                 floor: article.floor || null,
                 buildingName: article.articleName || null,
                 description: article.description || null,
+                articleConfirmDate: article.articleConfirmDate || null,
                 naverUrl: `https://fin.land.naver.com/complexes/${complex.complexNumber}?tab=article`,
               },
             });
             newListingIds.push(created.id);
-            newListings++;
           }
+          newListings += toCreate.length;
         }
 
         await delay(1500);
@@ -176,16 +248,29 @@ export async function crawlRegion(
     );
 
     // Deactivate listings not seen in this crawl
-    const deactivated = await prisma.listing.updateMany({
-      where: {
-        regionId,
-        isActive: true,
-        lastSeenAt: { lt: crawlStartedAt },
-      },
-      data: { isActive: false },
+    // Safety: skip deactivation if we found 0 listings but there are active ones
+    // (likely API failure, not actual removal of all listings)
+    let deactivatedCount = 0;
+    const activeCount = await prisma.listing.count({
+      where: { regionId, isActive: true },
     });
-    if (deactivated.count > 0) {
-      console.log(`[Crawl] ${deactivated.count}건 매물 비활성 처리 (이번 크롤에서 미발견)`);
+    if (totalFound === 0 && activeCount > 0) {
+      console.warn(
+        `[Crawl] 이번 크롤에서 0건 발견, 기존 ${activeCount}건 비활성화 생략 (API 오류 가능성)`
+      );
+    } else {
+      const deactivated = await prisma.listing.updateMany({
+        where: {
+          regionId,
+          isActive: true,
+          lastSeenAt: { lt: crawlStartedAt },
+        },
+        data: { isActive: false },
+      });
+      deactivatedCount = deactivated.count;
+      if (deactivatedCount > 0) {
+        console.log(`[Crawl] ${deactivatedCount}건 매물 비활성 처리 (이번 크롤에서 미발견)`);
+      }
     }
 
     // AI 분석: 신규 매물에 대해 Claude CLI로 가격/인프라 레벨 판단
@@ -212,7 +297,7 @@ export async function crawlRegion(
       regionName: meta?.regionName ?? cortarNo,
       newListings,
       updatedListings,
-      deactivated: deactivated.count,
+      deactivated: deactivatedCount,
     });
 
     await prisma.crawlLog.update({
@@ -222,11 +307,12 @@ export async function crawlRegion(
         totalFound,
         newListings,
         updatedListings,
+        deactivatedListings: deactivatedCount,
         status: "success",
       },
     });
 
-    return { totalFound, newListings, updatedListings };
+    return { totalFound, newListings, updatedListings, deactivated: deactivatedCount };
   } catch (error) {
     await prisma.crawlLog.update({
       where: { id: log.id },

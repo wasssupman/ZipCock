@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { PROPERTY_TYPES, TRADE_TYPES } from "@/lib/types";
-import { formatPrice, formatDate } from "@/lib/format";
+import { formatPrice, formatDate, formatConfirmDate } from "@/lib/format";
 import { PriceBadge, InfraBadge } from "@/components/level-badge";
 
 interface Region {
@@ -25,6 +25,7 @@ interface Listing {
   priceLevel: string | null;
   infraLevel: string | null;
   aiAnalysis: string | null;
+  articleConfirmDate: string | null;
   firstSeenAt: string;
   region: { name: string };
 }
@@ -228,6 +229,11 @@ export default function ListingsPage() {
                   {/* Date */}
                   <div className="col-span-2 mt-1 text-right text-xs text-muted sm:mt-0">
                     {formatDate(listing.firstSeenAt)}
+                    {listing.articleConfirmDate && (
+                      <div className="text-zinc-400">
+                        등록 {formatConfirmDate(listing.articleConfirmDate)}
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}

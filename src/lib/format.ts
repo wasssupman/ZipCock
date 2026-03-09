@@ -25,6 +25,16 @@ export function formatDate(dateStr: string): string {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** Format articleConfirmDate (YYYYMMDD or YYYY.MM.DD) to M/D */
+export function formatConfirmDate(raw: string | null): string | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/\./g, "");
+  if (cleaned.length !== 8) return raw;
+  const month = parseInt(cleaned.slice(4, 6), 10);
+  const day = parseInt(cleaned.slice(6, 8), 10);
+  return `${month}/${day}`;
+}
+
 /** Direction code to Korean label */
 const DIRECTION_MAP: Record<string, string> = {
   S: "남",

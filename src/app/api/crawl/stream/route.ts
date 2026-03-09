@@ -30,15 +30,8 @@ export async function GET() {
 
       crawlInProgress = true;
       crawlAllActiveRegions(send)
-        .then(async (results) => {
-          const hasChanges = results.some(
-            (r) =>
-              "newListings" in r &&
-              (r.newListings > 0 || r.updatedListings > 0)
-          );
-          if (hasChanges) {
-            await sendAlerts();
-          }
+        .then(async () => {
+          await sendAlerts();
         })
         .catch((err) => {
           send({

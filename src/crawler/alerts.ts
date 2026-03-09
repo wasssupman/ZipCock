@@ -8,7 +8,10 @@ function formatPrice(
   tradeType: string
 ): string {
   if (tradeType === "B2" && rentPrice) {
-    return `${Math.floor(price / 10000)}억 / 월 ${rentPrice}만`;
+    const deposit = price >= 10000
+      ? `${price % 10000 === 0 ? (price / 10000).toFixed(0) : (price / 10000).toFixed(1)}억`
+      : `${price}만`;
+    return `${deposit} / 월 ${rentPrice}만`;
   }
   if (price >= 10000) {
     const billions = price / 10000;
@@ -68,20 +71,29 @@ async function sendDiscord(webhookUrl: string, message: string) {
     const data = await res.json().catch(() => ({ retry_after: 2 }));
     const wait = (data.retry_after ?? 2) * 1000;
     await new Promise((r) => setTimeout(r, wait));
-    await fetch(webhookUrl, {
+    const retryRes = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: message }),
     });
+    if (!retryRes.ok) {
+      throw new Error(`Discord webhook failed after retry: ${retryRes.status}`);
+    }
+  } else if (!res.ok) {
+    throw new Error(`Discord webhook failed: ${res.status}`);
   }
 }
 
 async function sendTelegram(botToken: string, chatId: string, message: string) {
-  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+  const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chat_id: chatId, text: message }),
   });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Telegram API error ${res.status}: ${body}`);
+  }
 }
 
 function batchMessages(messages: string[], maxLen: number): string[] {
@@ -145,13 +157,13 @@ export async function sendAlerts() {
 
   for (const config of configs) {
     const filterPropTypes = config.filterPropertyTypes
-      ? JSON.parse(config.filterPropertyTypes)
+      ? config.filterPropertyTypes.split(",").map((s) => s.trim())
       : null;
     const filterTradeTypes = config.filterTradeTypes
-      ? JSON.parse(config.filterTradeTypes)
+      ? config.filterTradeTypes.split(",").map((s) => s.trim())
       : null;
     const filterRegionIds = config.filterRegionIds
-      ? JSON.parse(config.filterRegionIds)
+      ? config.filterRegionIds.split(",").map((s) => Number(s.trim()))
       : null;
 
     const matched = allAlerts.filter(({ listing: l }) => {
