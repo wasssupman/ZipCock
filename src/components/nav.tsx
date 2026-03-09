@@ -20,7 +20,7 @@ export default function Nav() {
           href="/"
           className="text-lg font-bold tracking-tight text-zinc-900"
         >
-          <span className="text-blue-600">M</span>uzeri
+          <span className="text-blue-600">Zip</span>Cock
         </Link>
         <div className="flex items-center gap-1">
           {links.map(({ href, label }) => {
