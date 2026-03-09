@@ -208,12 +208,37 @@ export default async function DashboardPage({
             newCount={newListings.length}
             deactivatedCount={deactivatedListings.length}
             newListings={newListings.map((l) => ({
-              ...l,
+              id: l.id,
+              buildingName: l.buildingName,
+              propertyType: l.propertyType,
+              tradeType: l.tradeType,
+              price: l.price,
+              rentPrice: l.rentPrice,
+              area: l.area,
+              floor: l.floor,
+              description: l.description,
+              address: l.address,
+              naverUrl: l.naverUrl,
+              priceLevel: l.priceLevel,
+              infraLevel: l.infraLevel,
+              aiAnalysis: l.aiAnalysis,
+              articleConfirmDate: l.articleConfirmDate,
               firstSeenAt: l.firstSeenAt.toISOString(),
+              region: l.region,
             }))}
             deactivatedListings={deactivatedListings.map((l) => ({
-              ...l,
+              id: l.id,
+              buildingName: l.buildingName,
+              propertyType: l.propertyType,
+              tradeType: l.tradeType,
+              price: l.price,
+              rentPrice: l.rentPrice,
+              area: l.area,
+              floor: l.floor,
+              address: l.address,
+              naverUrl: l.naverUrl,
               updatedAt: l.updatedAt.toISOString(),
+              region: l.region,
             }))}
             propertyLabels={propertyLabels}
             tradeLabels={tradeLabels}
