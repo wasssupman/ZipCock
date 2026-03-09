@@ -8,6 +8,19 @@ export const PROPERTY_TYPES = {
   SG: "상가주택",
 } as const;
 
+export const NON_COMPLEX_PROPERTY_TYPES = ["JWJT", "DDDGG", "SGJT", "HOJT"] as const;
+
+/** m.land rletTpCd → PROPERTY_TYPES key mapping */
+export const MLAND_PROPERTY_TYPE_MAP: Record<string, string> = {
+  C03: "DDDGG",  // 단독/다가구
+  C04: "DDDGG",  // 단독/다가구 (별칭)
+  D05: "SG",     // 상가주택
+  JWJT: "JWJT",  // 주택
+  SGJT: "SG",    // 상가주택
+  HOJT: "JWJT",  // 전원주택 → 주택
+  DDDGG: "DDDGG",
+};
+
 export const TRADE_TYPES = {
   A1: "매매",
   B1: "전세",

@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import type { RegionItem, ComplexItem, ArticleItem } from "./types";
+import { MLAND_PROPERTY_TYPE_MAP } from "./types";
 
 // --- Cookie-based fetch infrastructure ---
 
@@ -295,5 +296,121 @@ export async function fetchArticlesByComplex(
     await new Promise((r) => setTimeout(r, 1500));
   }
 
+  return allArticles;
+}
+
+// --- m.land.naver.com API (non-complex properties: 주택/단독다가구/상가주택) ---
+
+async function mlandFetch(url: string): Promise<unknown> {
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": USER_AGENT,
+      Accept: "application/json, text/plain, */*",
+      Referer: "https://m.land.naver.com/",
+    },
+  });
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { code: "error" };
+  }
+}
+
+interface ClusterItem {
+  lgeo: string;
+  count: number;
+  lat: number;
+  lon: number;
+}
+
+export async function fetchNonComplexArticles(
+  cortarNo: string,
+  tradeTypes: string[] = ["A1", "B1", "B2"]
+): Promise<ArticleItem[]> {
+  const rletTpCd = "JWJT:DDDGG:SGJT:HOJT";
+  const tradTpCd = tradeTypes.join(":");
+  // cortarNo does the actual region filtering; use wide bbox centered on Korea
+  const lat = 37.5;
+  const lon = 127.0;
+  const delta = 1.0;
+
+  // Step 1: Fetch clusters
+  const clusterUrl =
+    `https://m.land.naver.com/cluster/clusterList` +
+    `?view=atcl&cortarNo=${cortarNo}` +
+    `&rletTpCd=${rletTpCd}&tradTpCd=${tradTpCd}` +
+    `&z=14&lat=${lat}&lon=${lon}` +
+    `&btm=${lat - delta}&lft=${lon - delta}` +
+    `&top=${lat + delta}&rgt=${lon + delta}`;
+
+  const clusterData = (await mlandFetch(clusterUrl)) as {
+    code?: string;
+    data?: { ARTICLE?: ClusterItem[] };
+  };
+
+  const clusters = clusterData?.data?.ARTICLE ?? [];
+  if (clusters.length === 0) {
+    console.log(`[mland] No clusters found for ${cortarNo}`);
+    return [];
+  }
+
+  console.log(
+    `[mland] Found ${clusters.length} clusters (${clusters.reduce((s, c) => s + c.count, 0)} total articles)`
+  );
+
+  // Step 2: Fetch articles from each cluster
+  const allArticles: ArticleItem[] = [];
+
+  for (const cluster of clusters) {
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const articleUrl =
+        `https://m.land.naver.com/cluster/ajax/articleList` +
+        `?itemId=${cluster.lgeo}&lgeo=${cluster.lgeo}` +
+        `&rletTpCd=${rletTpCd}&tradTpCd=${tradTpCd}` +
+        `&z=14&lat=${cluster.lat}&lon=${cluster.lon}&page=${page}`;
+
+      const articleData = (await mlandFetch(articleUrl)) as {
+        code?: string;
+        more?: boolean;
+        body?: Array<Record<string, unknown>>;
+      };
+
+      const body = articleData?.body ?? [];
+      if (body.length === 0) break;
+
+      for (const item of body) {
+        const prc = Number(item.prc) || 0;
+        const rentPrc = Number(item.rentPrc) || 0;
+
+        // Map m.land rletTpCd to our property type codes
+        const rawType = String(item.rletTpCd || "");
+        const propertyType = MLAND_PROPERTY_TYPE_MAP[rawType] || rawType || null;
+
+        allArticles.push({
+          articleNumber: String(item.atclNo || ""),
+          articleName: String(item.atclNm || ""),
+          tradeType: String(item.tradTpCd || ""),
+          propertyType,
+          price: prc,
+          rentPrice: rentPrc > 0 ? rentPrc : null,
+          area: item.spc2 ? parseFloat(String(item.spc2)) : null,
+          floor: item.flrInfo ? String(item.flrInfo) : null,
+          direction: item.direction ? String(item.direction) : null,
+          description: item.atclFetrDesc ? String(item.atclFetrDesc) : null,
+          articleConfirmDate: item.atclCfmYmd ? String(item.atclCfmYmd) : null,
+        });
+      }
+
+      hasMore = articleData?.more === true;
+      page++;
+      if (hasMore) await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+
+  console.log(`[mland] Total ${allArticles.length} articles fetched for ${cortarNo}`);
   return allArticles;
 }
