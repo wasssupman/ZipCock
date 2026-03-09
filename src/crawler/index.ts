@@ -27,10 +27,10 @@ async function runCrawl() {
   }
   isRunning = true;
   try {
-    console.log(`[Crawler] Starting crawl at ${new Date().toISOString()}`);
+    const crawlStart = new Date();
+    console.log(`[Crawler] Starting crawl at ${crawlStart.toISOString()}`);
     const results = await crawlAllActiveRegions();
-    // Always send alerts (covers new, removed, and updated listings)
-    await sendAlerts();
+    await sendAlerts(crawlStart);
     console.log(`[Crawler] Finished at ${new Date().toISOString()}`);
   } catch (error) {
     console.error("[Crawler] Fatal error:", error);

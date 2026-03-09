@@ -110,7 +110,7 @@ function batchMessages(messages: string[], maxLen: number): string[] {
   return batches;
 }
 
-export async function sendAlerts() {
+export async function sendAlerts(crawlStartedAt?: Date) {
   const configs = await prisma.alertConfig.findMany({
     where: { isActive: true },
   });
@@ -126,15 +126,15 @@ export async function sendAlerts() {
   const isStale = !lastCrawl?.finishedAt || lastCrawl.finishedAt < threeDaysAgo;
   const NEW_LIMIT = isStale ? 5 : undefined;
 
-  const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+  const cutoff = crawlStartedAt ?? new Date(Date.now() - 10 * 60 * 1000);
   const [newListings, removedListings] = await Promise.all([
     prisma.listing.findMany({
-      where: { firstSeenAt: { gte: tenMinAgo }, isActive: true },
+      where: { firstSeenAt: { gte: cutoff }, isActive: true },
       orderBy: { firstSeenAt: "desc" },
       ...(NEW_LIMIT ? { take: NEW_LIMIT } : {}),
     }),
     prisma.listing.findMany({
-      where: { isActive: false, updatedAt: { gte: tenMinAgo } },
+      where: { isActive: false, updatedAt: { gte: cutoff } },
       orderBy: { updatedAt: "desc" },
       ...(NEW_LIMIT ? { take: NEW_LIMIT } : {}),
     }),

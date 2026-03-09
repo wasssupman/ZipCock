@@ -29,9 +29,10 @@ export async function GET() {
       controller.enqueue(encoder.encode(`: connected\n\n`));
 
       crawlInProgress = true;
+      const crawlStart = new Date();
       crawlAllActiveRegions(send)
         .then(async () => {
-          await sendAlerts();
+          await sendAlerts(crawlStart);
         })
         .catch((err) => {
           send({
