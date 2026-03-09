@@ -16,6 +16,8 @@ interface NewListing {
   area: number | null;
   floor: string | null;
   description: string | null;
+  address: string | null;
+  naverUrl: string | null;
   priceLevel: string | null;
   infraLevel: string | null;
   aiAnalysis: string | null;
@@ -33,6 +35,8 @@ interface DeactivatedListing {
   rentPrice: number | null;
   area: number | null;
   floor: string | null;
+  address: string | null;
+  naverUrl: string | null;
   updatedAt: string;
   region: { name: string };
 }
@@ -106,52 +110,77 @@ export default function RegionSection({
       {newListings.length > 0 ? (
         <>
           <ul className="divide-y divide-zinc-100">
-            {pagedNew.map((listing) => (
-              <li
-                key={listing.id}
-                className="flex items-center justify-between px-5 py-3.5 transition-colors hover:bg-zinc-50"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-zinc-900">
-                    {listing.buildingName || "매물"}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted">
-                    {propertyLabels[listing.propertyType] ||
-                      listing.propertyType}
-                    {" / "}
-                    {tradeLabels[listing.tradeType] || listing.tradeType}
-                    {listing.area ? ` / ${listing.area}m²` : ""}
-                    {listing.floor ? ` / ${listing.floor}층` : ""}
-                    {listing.description ? ` / ${listing.description}` : ""}
-                  </p>
-                  {(listing.priceLevel || listing.infraLevel) && (
-                    <div
-                      className="mt-1 flex gap-1"
-                      title={listing.aiAnalysis || undefined}
-                    >
-                      <PriceBadge level={listing.priceLevel} />
-                      <InfraBadge level={listing.infraLevel} />
-                    </div>
-                  )}
-                </div>
-                <div className="ml-4 shrink-0 text-right">
-                  <p className="text-sm font-semibold text-blue-700">
-                    {formatPrice(listing.price)}
-                    {listing.rentPrice
-                      ? ` / ${formatPrice(listing.rentPrice)}`
-                      : ""}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted">
-                    {formatDate(listing.firstSeenAt)}
-                    {listing.articleConfirmDate && (
-                      <span className="ml-1 text-zinc-400">
-                        (등록 {formatConfirmDate(listing.articleConfirmDate)})
-                      </span>
+            {pagedNew.map((listing) => {
+              const isNonComplex = ["DDDGG", "SG"].includes(listing.propertyType);
+              const inner = (
+                <>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-zinc-900">
+                      {listing.buildingName || "매물"}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {propertyLabels[listing.propertyType] ||
+                        listing.propertyType}
+                      {" / "}
+                      {tradeLabels[listing.tradeType] || listing.tradeType}
+                      {listing.area ? ` / ${listing.area}m²` : ""}
+                      {listing.floor ? ` / ${listing.floor}층` : ""}
+                      {listing.description ? ` / ${listing.description}` : ""}
+                    </p>
+                    {isNonComplex && listing.address && (
+                      <p className="mt-0.5 text-xs text-zinc-500">
+                        {listing.address}
+                      </p>
                     )}
-                  </p>
-                </div>
-              </li>
-            ))}
+                    {(listing.priceLevel || listing.infraLevel) && (
+                      <div
+                        className="mt-1 flex gap-1"
+                        title={listing.aiAnalysis || undefined}
+                      >
+                        <PriceBadge level={listing.priceLevel} />
+                        <InfraBadge level={listing.infraLevel} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="ml-4 shrink-0 text-right">
+                    <p className="text-sm font-semibold text-blue-700">
+                      {formatPrice(listing.price)}
+                      {listing.rentPrice
+                        ? ` / ${formatPrice(listing.rentPrice)}`
+                        : ""}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {formatDate(listing.firstSeenAt)}
+                      {listing.articleConfirmDate && (
+                        <span className="ml-1 text-zinc-400">
+                          (등록 {formatConfirmDate(listing.articleConfirmDate)})
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </>
+              );
+
+              return listing.naverUrl ? (
+                <li key={listing.id}>
+                  <a
+                    href={listing.naverUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between px-5 py-3.5 transition-colors hover:bg-zinc-50"
+                  >
+                    {inner}
+                  </a>
+                </li>
+              ) : (
+                <li
+                  key={listing.id}
+                  className="flex items-center justify-between px-5 py-3.5 transition-colors hover:bg-zinc-50"
+                >
+                  {inner}
+                </li>
+              );
+            })}
           </ul>
           {newTotalPages > 1 && (
             <Paginator
@@ -177,34 +206,58 @@ export default function RegionSection({
             </h3>
           </div>
           <ul className="divide-y divide-red-100">
-            {pagedDeactivated.map((listing) => (
-              <li
-                key={listing.id}
-                className="flex items-center justify-between px-5 py-3.5 opacity-75"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-zinc-700">
-                    {listing.buildingName || "매물"}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted">
-                    {propertyLabels[listing.propertyType] ||
-                      listing.propertyType}
-                    {" / "}
-                    {tradeLabels[listing.tradeType] || listing.tradeType}
-                    {listing.area ? ` / ${listing.area}m²` : ""}
-                    {listing.floor ? ` / ${listing.floor}층` : ""}
-                  </p>
-                </div>
-                <div className="ml-4 shrink-0 text-right">
-                  <p className="text-sm font-semibold text-zinc-500 line-through">
-                    {formatPrice(listing.price)}
-                  </p>
-                  <p className="mt-0.5 text-xs text-red-500">
-                    {formatDate(listing.updatedAt)} 삭제
-                  </p>
-                </div>
-              </li>
-            ))}
+            {pagedDeactivated.map((listing) => {
+              const inner = (
+                <>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-zinc-700">
+                      {listing.buildingName || "매물"}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {propertyLabels[listing.propertyType] ||
+                        listing.propertyType}
+                      {" / "}
+                      {tradeLabels[listing.tradeType] || listing.tradeType}
+                      {listing.area ? ` / ${listing.area}m²` : ""}
+                      {listing.floor ? ` / ${listing.floor}층` : ""}
+                    </p>
+                    {listing.address && (
+                      <p className="mt-0.5 text-xs text-zinc-500">
+                        {listing.address}
+                      </p>
+                    )}
+                  </div>
+                  <div className="ml-4 shrink-0 text-right">
+                    <p className="text-sm font-semibold text-zinc-500 line-through">
+                      {formatPrice(listing.price)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-red-500">
+                      {formatDate(listing.updatedAt)} 삭제
+                    </p>
+                  </div>
+                </>
+              );
+
+              return listing.naverUrl ? (
+                <li key={listing.id}>
+                  <a
+                    href={listing.naverUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between px-5 py-3.5 opacity-75 transition-colors hover:bg-red-50"
+                  >
+                    {inner}
+                  </a>
+                </li>
+              ) : (
+                <li
+                  key={listing.id}
+                  className="flex items-center justify-between px-5 py-3.5 opacity-75"
+                >
+                  {inner}
+                </li>
+              );
+            })}
           </ul>
           {deactivatedTotalPages > 1 && (
             <Paginator
