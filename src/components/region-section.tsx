@@ -82,8 +82,10 @@ export default function RegionSection({
 }) {
   const [newTab, setNewTab] = useState("all");
   const [newPage, setNewPage] = useState(1);
+  const [newTradeFilters, setNewTradeFilters] = useState<Set<string>>(new Set());
   const [deactivatedTab, setDeactivatedTab] = useState("all");
   const [deactivatedPage, setDeactivatedPage] = useState(1);
+  const [deactivatedTradeFilters, setDeactivatedTradeFilters] = useState<Set<string>>(new Set());
 
   const newTabs = useMemo(
     () => getPropertyTabs(newListings, propertyLabels),
@@ -94,20 +96,25 @@ export default function RegionSection({
     [deactivatedListings, propertyLabels]
   );
 
-  const filteredNew = useMemo(
-    () =>
-      newTab === "all"
-        ? newListings
-        : newListings.filter((l) => l.propertyType === newTab),
-    [newListings, newTab]
-  );
-  const filteredDeactivated = useMemo(
-    () =>
-      deactivatedTab === "all"
-        ? deactivatedListings
-        : deactivatedListings.filter((l) => l.propertyType === deactivatedTab),
-    [deactivatedListings, deactivatedTab]
-  );
+  const filteredNew = useMemo(() => {
+    let list = newTab === "all"
+      ? newListings
+      : newListings.filter((l) => l.propertyType === newTab);
+    if (newTradeFilters.size > 0) {
+      list = list.filter((l) => newTradeFilters.has(l.tradeType));
+    }
+    return list;
+  }, [newListings, newTab, newTradeFilters]);
+
+  const filteredDeactivated = useMemo(() => {
+    let list = deactivatedTab === "all"
+      ? deactivatedListings
+      : deactivatedListings.filter((l) => l.propertyType === deactivatedTab);
+    if (deactivatedTradeFilters.size > 0) {
+      list = list.filter((l) => deactivatedTradeFilters.has(l.tradeType));
+    }
+    return list;
+  }, [deactivatedListings, deactivatedTab, deactivatedTradeFilters]);
 
   const newTotalPages = Math.max(1, Math.ceil(filteredNew.length / ITEMS_PER_PAGE));
   const deactivatedTotalPages = Math.max(1, Math.ceil(filteredDeactivated.length / ITEMS_PER_PAGE));
@@ -120,6 +127,18 @@ export default function RegionSection({
     (deactivatedPage - 1) * ITEMS_PER_PAGE,
     deactivatedPage * ITEMS_PER_PAGE
   );
+
+  const newTradeTypes = useMemo(() => {
+    const types = new Set<string>();
+    for (const l of newListings) types.add(l.tradeType);
+    return Array.from(types);
+  }, [newListings]);
+
+  const deactivatedTradeTypes = useMemo(() => {
+    const types = new Set<string>();
+    for (const l of deactivatedListings) types.add(l.tradeType);
+    return Array.from(types);
+  }, [deactivatedListings]);
 
   return (
     <div className="animate-fade-in rounded-xl border border-border bg-card">
@@ -165,6 +184,12 @@ export default function RegionSection({
               }}
             />
           )}
+          <TradeFilterCheckboxes
+            tradeTypes={newTradeTypes}
+            selected={newTradeFilters}
+            onChange={(next) => { setNewTradeFilters(next); setNewPage(1); }}
+            tradeLabels={tradeLabels}
+          />
           <ul className="divide-y divide-zinc-100">
             {pagedNew.map((listing) => (
               <NewListingRow
@@ -209,6 +234,13 @@ export default function RegionSection({
               variant="danger"
             />
           )}
+          <TradeFilterCheckboxes
+            tradeTypes={deactivatedTradeTypes}
+            selected={deactivatedTradeFilters}
+            onChange={(next) => { setDeactivatedTradeFilters(next); setDeactivatedPage(1); }}
+            tradeLabels={tradeLabels}
+            variant="danger"
+          />
           <ul className="divide-y divide-red-100">
             {pagedDeactivated.map((listing) => (
               <DeactivatedListingRow
@@ -394,6 +426,57 @@ function DeactivatedListingRow({
     <li className="flex items-center justify-between px-5 py-3.5 opacity-75">
       {inner}
     </li>
+  );
+}
+
+function TradeFilterCheckboxes({
+  tradeTypes,
+  selected,
+  onChange,
+  tradeLabels,
+  variant = "default",
+}: {
+  tradeTypes: string[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+  tradeLabels: Record<string, string>;
+  variant?: "default" | "danger";
+}) {
+  if (tradeTypes.length < 2) return null;
+
+  const toggle = (type: string) => {
+    const next = new Set(selected);
+    if (next.has(type)) next.delete(type);
+    else next.add(type);
+    onChange(next);
+  };
+
+  const accentClass =
+    variant === "danger"
+      ? "border-red-300 bg-red-50 text-red-700"
+      : "border-blue-300 bg-blue-50 text-blue-700";
+  const defaultClass =
+    variant === "danger"
+      ? "border-zinc-200 text-zinc-500 hover:border-red-200"
+      : "border-zinc-200 text-zinc-500 hover:border-zinc-300";
+
+  return (
+    <div className="flex flex-wrap gap-1.5 px-5 py-2">
+      {tradeTypes.map((type) => {
+        const active = selected.size === 0 || selected.has(type);
+        return (
+          <button
+            key={type}
+            onClick={() => toggle(type)}
+            className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+              selected.has(type) ? accentClass : selected.size === 0 ? defaultClass : "border-zinc-100 text-zinc-300"
+            }`}
+          >
+            {tradeLabels[type] || type}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
