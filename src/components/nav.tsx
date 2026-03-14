@@ -23,7 +23,7 @@ export default function Nav() {
         >
           <span className="text-blue-600">Zip</span>Cock
         </Link>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 sm:gap-1">
           {links.map(({ href, label }) => {
             const isActive =
               href === "/" ? pathname === "/" : pathname.startsWith(href);
