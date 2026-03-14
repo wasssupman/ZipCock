@@ -68,7 +68,7 @@ export default async function DashboardPage({
   const pagedIds = pagedRegions.map((r) => r.id);
 
   // Fetch new and deactivated listings only for current page's regions
-  const [newListingsAll, deactivatedListingsAll] = await Promise.all([
+  const [newListingsAll, deactivatedListingsAll, starredListings] = await Promise.all([
     prisma.listing.findMany({
       where: {
         isActive: true,
@@ -87,7 +87,10 @@ export default async function DashboardPage({
       orderBy: { updatedAt: "desc" },
       include: { region: { select: { name: true } } },
     }),
+    prisma.starredListing.findMany({ select: { listingId: true } }),
   ]);
+
+  const starredIds = new Set(starredListings.map((s) => s.listingId));
 
   // Group by regionId
   const newByRegion = new Map<number, typeof newListingsAll>();
@@ -242,6 +245,7 @@ export default async function DashboardPage({
             }))}
             propertyLabels={propertyLabels}
             tradeLabels={tradeLabels}
+            starredIds={starredIds}
           />
         );
       })}

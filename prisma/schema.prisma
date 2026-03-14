@@ -45,6 +45,7 @@ model Listing {
   aiAnalysis     String?
   analyzedAt     DateTime?
   priceHistory   PriceHistory[]
+  starredBy      StarredListing?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -92,4 +93,12 @@ model PriceHistory {
   changedAt DateTime @default(now())
 
   @@index([listingId])
+}
+
+model StarredListing {
+  id        Int      @id @default(autoincrement())
+  listingId Int      @unique
+  listing   Listing  @relation(fields: [listingId], references: [id])
+  memo      String?
+  createdAt DateTime @default(now())
 }

@@ -7,6 +7,7 @@ const links = [
   { href: "/", label: "대시보드" },
   { href: "/regions", label: "지역 관리" },
   { href: "/listings", label: "매물 목록" },
+  { href: "/starred", label: "관심 매물" },
   { href: "/alerts", label: "알림 설정" },
 ];
 

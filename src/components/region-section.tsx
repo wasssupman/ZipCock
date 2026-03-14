@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { formatPrice, formatDate, formatConfirmDate } from "@/lib/format";
 import { PriceBadge, InfraBadge } from "@/components/level-badge";
+import StarButton from "@/components/star-button";
 
 const ITEMS_PER_PAGE = 5;
 
@@ -70,6 +71,7 @@ export default function RegionSection({
   deactivatedListings,
   propertyLabels,
   tradeLabels,
+  starredIds = new Set<number>(),
 }: {
   name: string;
   totalListings: number;
@@ -79,6 +81,7 @@ export default function RegionSection({
   deactivatedListings: DeactivatedListing[];
   propertyLabels: Record<string, string>;
   tradeLabels: Record<string, string>;
+  starredIds?: Set<number>;
 }) {
   const [newTab, setNewTab] = useState("all");
   const [newPage, setNewPage] = useState(1);
@@ -197,6 +200,7 @@ export default function RegionSection({
                 listing={listing}
                 propertyLabels={propertyLabels}
                 tradeLabels={tradeLabels}
+                starred={starredIds.has(listing.id)}
               />
             ))}
           </ul>
@@ -248,6 +252,7 @@ export default function RegionSection({
                 listing={listing}
                 propertyLabels={propertyLabels}
                 tradeLabels={tradeLabels}
+                starred={starredIds.has(listing.id)}
               />
             ))}
           </ul>
@@ -307,13 +312,16 @@ function NewListingRow({
   listing,
   propertyLabels,
   tradeLabels,
+  starred,
 }: {
   listing: NewListing;
   propertyLabels: Record<string, string>;
   tradeLabels: Record<string, string>;
+  starred: boolean;
 }) {
   const inner = (
     <>
+      <StarButton listingId={listing.id} initialStarred={starred} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-zinc-900">
           {listing.buildingName || "매물"}
@@ -362,13 +370,13 @@ function NewListingRow({
         href={listing.naverUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center justify-between px-5 py-3.5 transition-colors hover:bg-zinc-50"
+        className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-zinc-50"
       >
         {inner}
       </a>
     </li>
   ) : (
-    <li className="flex items-center justify-between px-5 py-3.5 transition-colors hover:bg-zinc-50">
+    <li className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-zinc-50">
       {inner}
     </li>
   );
@@ -378,13 +386,16 @@ function DeactivatedListingRow({
   listing,
   propertyLabels,
   tradeLabels,
+  starred,
 }: {
   listing: DeactivatedListing;
   propertyLabels: Record<string, string>;
   tradeLabels: Record<string, string>;
+  starred: boolean;
 }) {
   const inner = (
     <>
+      <StarButton listingId={listing.id} initialStarred={starred} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-zinc-700">
           {listing.buildingName || "매물"}
@@ -417,13 +428,13 @@ function DeactivatedListingRow({
         href={listing.naverUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-center justify-between px-5 py-3.5 opacity-75 transition-colors hover:bg-red-50"
+        className="flex items-center gap-3 px-5 py-3.5 opacity-75 transition-colors hover:bg-red-50"
       >
         {inner}
       </a>
     </li>
   ) : (
-    <li className="flex items-center justify-between px-5 py-3.5 opacity-75">
+    <li className="flex items-center gap-3 px-5 py-3.5 opacity-75">
       {inner}
     </li>
   );

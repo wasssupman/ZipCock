@@ -131,18 +131,20 @@ export async function sendAlerts(crawlStartedAt?: Date) {
     prisma.listing.findMany({
       where: { firstSeenAt: { gte: cutoff }, isActive: true },
       orderBy: { firstSeenAt: "desc" },
+      include: { region: { select: { name: true } } },
       ...(NEW_LIMIT ? { take: NEW_LIMIT } : {}),
     }),
     prisma.listing.findMany({
       where: { isActive: false, updatedAt: { gte: cutoff } },
       orderBy: { updatedAt: "desc" },
+      include: { region: { select: { name: true } } },
       ...(NEW_LIMIT ? { take: NEW_LIMIT } : {}),
     }),
   ]);
 
-  const allAlerts: { listing: ListingInfo; type: "new" | "removed" }[] = [
-    ...newListings.map((l) => ({ listing: l as ListingInfo, type: "new" as const })),
-    ...removedListings.map((l) => ({ listing: l as ListingInfo, type: "removed" as const })),
+  const allAlerts: { listing: ListingInfo & { region: { name: string } }; type: "new" | "removed" }[] = [
+    ...newListings.map((l) => ({ listing: l as ListingInfo & { region: { name: string } }, type: "new" as const })),
+    ...removedListings.map((l) => ({ listing: l as ListingInfo & { region: { name: string } }, type: "removed" as const })),
   ];
 
   if (isStale) {
@@ -154,6 +156,8 @@ export async function sendAlerts(crawlStartedAt?: Date) {
     `[Alert] Found ${newListings.length} new, ${removedListings.length} removed listings in last 10 min`
   );
   if (allAlerts.length === 0) return;
+
+  const appUrl = process.env.NGROK_URL || "http://localhost:3000";
 
   for (const config of configs) {
     const filterPropTypes = config.filterPropertyTypes
@@ -180,31 +184,53 @@ export async function sendAlerts(crawlStartedAt?: Date) {
       return true;
     });
 
-    // Batch messages to avoid rate limits (Discord 2000 char limit)
-    const messages = matched.map(({ listing, type }) =>
-      formatMessage(listing, type)
-    );
-    const batches = batchMessages(messages, 1900);
+    if (matched.length === 0) continue;
 
-    for (const batch of batches) {
-      try {
-        if (config.channel === "discord" && config.webhookUrl) {
-          await sendDiscord(config.webhookUrl, batch);
-        } else if (
-          config.channel === "telegram" &&
-          config.botToken &&
-          config.chatId
-        ) {
-          await sendTelegram(config.botToken, config.chatId, batch);
-        }
-      } catch (error) {
-        console.error(
-          `[Alert] Failed to send ${config.channel} alert:`,
-          error
-        );
+    const newCount = matched.filter((m) => m.type === "new").length;
+    const removedCount = matched.filter((m) => m.type === "removed").length;
+
+    // Build per-region breakdown
+    const regionStats = new Map<string, { newCount: number; removedCount: number }>();
+    for (const { listing, type } of matched) {
+      const regionName = listing.region.name;
+      const stats = regionStats.get(regionName) || { newCount: 0, removedCount: 0 };
+      if (type === "new") stats.newCount++;
+      else stats.removedCount++;
+      regionStats.set(regionName, stats);
+    }
+
+    const parts: string[] = ["📊 **ZipCock 매물 알림**"];
+    if (newCount > 0) parts.push(`🆕 신규 매물: **${newCount}건**`);
+    if (removedCount > 0) parts.push(`❌ 사라진 매물: **${removedCount}건**`);
+
+    parts.push("");
+    parts.push("📍 **지역별 현황**");
+    for (const [regionName, stats] of regionStats) {
+      const items: string[] = [];
+      if (stats.newCount > 0) items.push(`신규 ${stats.newCount}`);
+      if (stats.removedCount > 0) items.push(`삭제 ${stats.removedCount}`);
+      parts.push(`  • ${regionName}: ${items.join(" / ")}`);
+    }
+
+    parts.push(`\n🔗 자세히 보기: ${appUrl}`);
+
+    const message = parts.join("\n");
+
+    try {
+      if (config.channel === "discord" && config.webhookUrl) {
+        await sendDiscord(config.webhookUrl, message);
+      } else if (
+        config.channel === "telegram" &&
+        config.botToken &&
+        config.chatId
+      ) {
+        await sendTelegram(config.botToken, config.chatId, message);
       }
-      // Small delay between batches to avoid rate limits
-      await new Promise((r) => setTimeout(r, 1000));
+    } catch (error) {
+      console.error(
+        `[Alert] Failed to send ${config.channel} alert:`,
+        error
+      );
     }
   }
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { PROPERTY_TYPES, TRADE_TYPES } from "@/lib/types";
 import { formatPrice, formatDate, formatConfirmDate } from "@/lib/format";
 import { PriceBadge, InfraBadge } from "@/components/level-badge";
+import StarButton from "@/components/star-button";
 
 interface Region {
   id: number;
@@ -44,6 +45,7 @@ export default function ListingsPage() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [starredIds, setStarredIds] = useState<Set<number>>(new Set());
 
   // Filters
   const [regionId, setRegionId] = useState("");
@@ -57,6 +59,11 @@ export default function ListingsPage() {
     fetch("/api/regions")
       .then((r) => r.json())
       .then(setRegions);
+    fetch("/api/starred")
+      .then((r) => r.json())
+      .then((data: { listingId: number }[]) =>
+        setStarredIds(new Set(data.map((s) => s.listingId)))
+      );
   }, []);
 
   const fetchListings = useCallback(async () => {
@@ -154,7 +161,8 @@ export default function ListingsPage() {
           <>
             {/* Table header */}
             <div className="hidden border-b border-border px-5 py-3 text-xs font-medium uppercase tracking-wide text-muted sm:grid sm:grid-cols-12 sm:gap-4">
-              <div className="col-span-4">매물정보</div>
+              <div className="col-span-1"></div>
+              <div className="col-span-3">매물정보</div>
               <div className="col-span-2">유형</div>
               <div className="col-span-2 text-right">가격</div>
               <div className="col-span-2 text-right">면적/층</div>
@@ -166,8 +174,12 @@ export default function ListingsPage() {
                   key={listing.id}
                   className="px-5 py-4 transition-colors hover:bg-zinc-50 sm:grid sm:grid-cols-12 sm:items-center sm:gap-4"
                 >
+                  {/* Star */}
+                  <div className="col-span-1 flex items-center">
+                    <StarButton listingId={listing.id} initialStarred={starredIds.has(listing.id)} />
+                  </div>
                   {/* Building info */}
-                  <div className="col-span-4 min-w-0">
+                  <div className="col-span-3 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-medium text-zinc-900">
                         {listing.buildingName || "매물"}
